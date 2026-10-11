@@ -79,6 +79,9 @@ Priority order lives here and only here.
     b. Auto theme: a third theme state next to Dark and Light that follows the system
        (`prefers-color-scheme`), in `internal\report\template.html` and
        `cmd\burnmon-dev\page.html`.
+    c. Design session tag (decided 2026-10-11): tag Claude Code sessions that publish a Design
+       canvas (`project/canvas.json`, `*.dc.html` in Artifact tool input) as `design`, session
+       level, agent stays `claude-code`. Spec: `2026-10-11_design-session-tag.md`.
 11. Decision 2026-12-19.
 
 Full plan with hypotheses, risks and assumptions: `2026-09-22_burnmon_plan.md`.

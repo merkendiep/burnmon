@@ -2,6 +2,10 @@
 
 One paragraph per work session, newest on top.
 
+## 2026-10-11, design session tag spec (uncommitted)
+
+Wilco asked why Claude Design did not show in BurnMon Dev. claude.ai Design keeps no local transcript; Design work in the Claude Code tab does, and was already counted as `claude-code siteoffice #1cb0` (tag = last four characters of the session id). Measured markers in that transcript with PowerShell: no `/design` command, 49 Artifact tool lines, 46 `project/canvas.json`, 351 `*.dc.html`. The two `type_url` values resolve to the Design and Design System types, and the Design type answered under another address, so URLs are not used. Decided with Wilco: a `design` tag (agent stays `claude-code`), session level, turn level OPEN, build after the park. Spec `02_roadmap\2026-10-11_design-session-tag.md`, roadmap item 10c. No code change. Nothing committed.
+
 ## 2026-10-07, turn card column fix and two roadmap findings (uncommitted)
 
 In the compact turn card opened from the Station, the Tool, In and Out columns of "Tool calls this turn" wrapped one letter per line (320px card with `overflow-wrap:anywhere`). Those cells now carry class `fit` with a one-line rule; Path is the only column that wraps (`cmd\burnmon-dev\page.html`). Test first: `cmd\burnmon-dev\turnpopup_columns_test.go`. Not run here (no Go in the Cowork sandbox); go vet, go test, build.ps1 and uicheck are Wilco's run. Logged two findings in `02_roadmap\roadmap.md` item 10 for after the park: the browser-mode Refresh button that never finishes, and an Auto theme. Wilco confirmed the wall: no outside fork or port is accepted. Nothing committed.
