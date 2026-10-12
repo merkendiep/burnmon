@@ -89,7 +89,8 @@ Priority order lives here and only here.
        sessions, not measured" from `remote-session-spaces.json`. Gated on live tests (hook fires in
        cloud, hook-driven delivery: both passed 2026-10-12). Spec: `2026-10-12_cowork_cloud_bucket_spec.md`; test plugin:
        `..\tools\burnmon-cloud-probe`. Second park exception (Wilco, 2026-10-12, "build now"): built the same
-       day, plugin `..\tools\burnmon-cloud`, agent `cowork-cloud`. Not built yet: the "not measured" counter.
+       day, plugin `..\tools\burnmon-cloud`, agent `cowork-cloud`. **DONE 2026-10-12** (`a249bc5`), live in
+       BurnMon Dev the same evening. Not built yet: the "not measured" counter.
        Research: `..\04_assets\2026-10-12_cloud_cowork_capture_research.md`.
        Proof: `..\04_assets\2026-10-12_cloud_cowork_sessions_proof.md`.
     e. Bug, found 2026-10-12: the live watcher counts a local Cowork session's `audit.jsonl` as a
