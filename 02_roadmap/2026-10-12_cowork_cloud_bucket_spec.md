@@ -89,6 +89,25 @@ between versions" (code.claude.com/docs/en/sessions).
    the laptop without the model calling any tool. Needs that folder connected to the session.
 4. Gap size: compare the extract with the session's own totals at three turn boundaries.
 
+## Live test results
+
+- 2026-10-12 17:32, probe 0.1.0, cloud session `551731f0`, folder `C:\ZND\50_projects\burnmon` connected.
+  Test 1 (hook fires): PASS. Test 3 (hook delivery without the model): PASS. `probe-latest.jsonl` landed
+  on the laptop at 17:32:20, 1,006 bytes, 2 request rows (17:32:10 and 17:32:13, `claude-sonnet-5-5`,
+  `entrypoint` `remote_cowork`), 7 seconds after the last request. Every row carries exactly the 19
+  whitelisted fields.
+- Test 2 (final row seen): PASS in both test sessions. The probe log said `final_text_in_transcript: true`
+  (session `1afdc570`, Opus 5.5, 1 request, 323 ms; session `551731f0`, Sonnet 5.5, 2 requests, 403 ms).
+- Test 3 caveat 1, delivery lags one turn: the second delivery (17:33:59) still held the 2 rows of turn 1.
+  The extract hook and the commit hook run in parallel on Stop, so the commit copies the previous file.
+  The final turn of a session is therefore not delivered unless a later event (UserPromptSubmit,
+  SessionEnd) commits again. To test in the build: extract also on PostToolUse, commit also on
+  UserPromptSubmit and SessionEnd.
+- Test 3 caveat 2, folder: session `1afdc570` had only a non-ZND folder connected, and nothing was
+  delivered. Delivery needs a connected folder that contains the hook's `devicePath`. Session
+  `551731f0` had `C:\ZND` connected and delivered into `C:\ZND\50_projects\burnmon`.
+- Test 4 (gap size): not yet run.
+
 ## Done when
 
 - Vendor strip shows Cowork and Cowork (Cloud) as separate rows, today, week and month.
