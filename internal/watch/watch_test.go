@@ -311,3 +311,59 @@ func TestTail_CapKeepsMostRecent(t *testing.T) {
 		t.Fatal("expired entry still tracked")
 	}
 }
+
+// TestWatcher_SkipsNonTranscripts guards the 2026-10-12 double count: a
+// local Cowork session's audit.jsonl, and scratch copies under outputs\ or
+// uploads\, must never reach onChange or the tail poll. FindJSONL already
+// skipped them; the live path did not.
+func TestWatcher_SkipsNonTranscripts(t *testing.T) {
+	dir := t.TempDir()
+	c := &changeCollector{}
+	w, err := New([]string{dir}, nil, c.onChange)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Start()
+	defer w.Stop()
+
+	skip := []string{
+		filepath.Join(dir, "audit.jsonl"),
+		filepath.Join(dir, "outputs", "copy.jsonl"),
+		filepath.Join(dir, "uploads", "copy.jsonl"),
+	}
+	for _, p := range skip {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(200 * time.Millisecond)
+	for _, p := range skip {
+		if err := os.WriteFile(p, []byte(`{"a":1}`+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	real := filepath.Join(dir, "session.jsonl")
+	if err := os.WriteFile(real, []byte(`{"a":1}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.waitFor(t, real, 3*time.Second)
+	time.Sleep(300 * time.Millisecond)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, got := range c.paths {
+		for _, p := range skip {
+			if got == p {
+				t.Errorf("onChange fired for %s, want it skipped", p)
+			}
+		}
+	}
+
+	w.Track(skip[0])
+	w.tailMu.Lock()
+	_, tracked := w.tail[skip[0]]
+	w.tailMu.Unlock()
+	if tracked {
+		t.Errorf("Track accepted %s, want it skipped", skip[0])
+	}
+}

@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -111,7 +110,7 @@ func FindJSONL(sources []string) []string {
 			continue
 		}
 		if !fi.IsDir() {
-			if strings.HasSuffix(src, ".jsonl") && filepath.Base(src) != "audit.jsonl" {
+			if IsTranscriptPath(src) {
 				best[filepath.Base(src)] = pick{src, fi.ModTime()}
 			}
 			continue
@@ -131,16 +130,10 @@ func FindJSONL(sources []string) []string {
 				}
 				return nil
 			}
-			if !strings.HasSuffix(d.Name(), ".jsonl") {
-				return nil
-			}
-			// audit.jsonl is the Cowork session workspace's own operations
-			// log, not a transcript: its type/operation lines replay enough
-			// assistant/usage records to parse as a phantom session with
-			// inflated call counts, and every one of them shares the same
-			// basename anyway, so keeping it just means one random
-			// workspace's audit log wins the dedup.
-			if d.Name() == "audit.jsonl" {
+			// IsTranscriptPath (filter.go) skips audit.jsonl, the Cowork
+			// session workspace's own operations log, and anything under
+			// outputs or uploads, the same rule the live watcher applies.
+			if !IsTranscriptPath(p) {
 				return nil
 			}
 			info, err := d.Info()

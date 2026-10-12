@@ -1034,3 +1034,70 @@ func TestUpsertToolCallsResultOnly(t *testing.T) {
 		t.Fatalf("the ghost result must not create a row: %+v %v", m, err)
 	}
 }
+
+// TestPurgeAuditSessions removes what the 2026-10-12 live-watcher bug left
+// behind: Claude events and tool calls under session key "audit" (a local
+// Cowork session's audit.jsonl read as its own session) and that file's
+// cursor. Real sessions and other vendors stay untouched.
+func TestPurgeAuditSessions(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "burnmon.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	at := time.Date(2026, 10, 12, 14, 45, 0, 0, time.UTC)
+	ev := func(vendor, agent, sid, rid string) schema.Event {
+		return schema.Event{Vendor: vendor, Agent: agent, SessionID: sid, RequestID: rid, At: at, Input: 4, Output: 20}
+	}
+	if err := st.UpsertEvents([]schema.Event{
+		ev("anthropic", "cowork", "audit", "req_1"),
+		ev("anthropic", "cowork", "audit", "req_2"),
+		ev("anthropic", "cowork", "e5af89ab", "req_1"),
+		ev("openai", "codex", "audit", "audit:3"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertToolCalls([]schema.ToolCall{
+		{Vendor: "anthropic", Agent: "cowork", SessionID: "audit", CallID: "c1", Turn: "req_1", Tool: "Bash", At: at},
+		{Vendor: "anthropic", Agent: "cowork", SessionID: "e5af89ab", CallID: "c1", Turn: "req_1", Tool: "Bash", At: at},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	auditPath := `C:\x\local-agent-mode-sessions\a\o\92082970\audit.jsonl`
+	realPath := `C:\x\local-agent-mode-sessions\a\o\92082970\.claude\projects\session\e5af89ab.jsonl`
+	for _, p := range []string{auditPath, realPath} {
+		if err := st.SetCursor(p, 100, at, 100); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	events, calls, cursors, err := st.PurgeAuditSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if events != 2 || calls != 1 || cursors != 1 {
+		t.Fatalf("removed %d events, %d tool calls, %d cursors; want 2, 1, 1", events, calls, cursors)
+	}
+	got, err := st.AllEvents()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("%d events left, want 2 (the real Cowork row and the Codex row)", len(got))
+	}
+	for _, e := range got {
+		if e.Vendor == "anthropic" && e.SessionID == "audit" {
+			t.Fatalf("audit event %s still present", e.RequestID)
+		}
+	}
+	if _, _, _, ok, _ := st.Cursor(auditPath); ok {
+		t.Fatal("audit.jsonl cursor still present")
+	}
+	if _, _, _, ok, _ := st.Cursor(realPath); !ok {
+		t.Fatal("real transcript cursor was removed")
+	}
+	if e, c, k, err := st.PurgeAuditSessions(); err != nil || e != 0 || c != 0 || k != 0 {
+		t.Fatalf("second run removed %d/%d/%d (err %v), want a no-op", e, c, k, err)
+	}
+}

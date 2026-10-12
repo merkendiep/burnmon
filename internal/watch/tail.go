@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"burnmon/internal/scan"
 )
 
 // The tail poll (WS2 follow-up, 2026-09-29, item 2) is the real fix for a
@@ -44,7 +46,7 @@ type tailEntry struct {
 // OnAdvance (a cursor that moved); SetTailSeed covers Codex's recent
 // rollouts; native notifications call it on their own.
 func (w *Watcher) Track(path string) {
-	if !strings.HasSuffix(strings.ToLower(path), ".jsonl") || !w.underNativeRoot(path) {
+	if !scan.IsTranscriptPath(path) || !w.underNativeRoot(path) {
 		return
 	}
 	now := time.Now()

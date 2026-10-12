@@ -12,9 +12,10 @@ package watch
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
+
+	"burnmon/internal/scan"
 )
 
 // pollInterval is how often a WSL root's .jsonl files are re-stat'd, per the
@@ -96,7 +97,13 @@ func New(nativeRoots, wslRoots []string, onChange OnChange) (*Watcher, error) {
 	}
 	// A native notification also marks its file for the tail poll, so a
 	// file created while the watcher runs is tailed from then on.
+	// scan.IsTranscriptPath drops a Cowork session's audit.jsonl and the
+	// scratch copies under outputs and uploads, the same rule FindJSONL
+	// applies, so a live write never counts a session twice (2026-10-12).
 	native, err := newNativeBackend(func(path string) {
+		if !scan.IsTranscriptPath(path) {
+			return
+		}
 		w.Track(path)
 		onChange(path)
 	})
@@ -217,7 +224,7 @@ func (w *Watcher) pollWSLOnce() {
 	w.wslMu.Unlock()
 	for _, root := range roots {
 		_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() || !strings.HasSuffix(strings.ToLower(p), ".jsonl") {
+			if err != nil || d.IsDir() || !scan.IsTranscriptPath(p) {
 				return nil
 			}
 			fi, statErr := d.Info()

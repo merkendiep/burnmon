@@ -1130,3 +1130,41 @@ func DefaultPath() (string, error) {
 	}
 	return filepath.Join(dir, "burnmon", "burnmon.db"), nil
 }
+
+// PurgeAuditSessions removes what the live watcher's audit.jsonl bug left
+// in the store (found 2026-10-12): Claude events and tool calls under
+// session key "audit", which is a local Cowork session's audit.jsonl read
+// as a session of its own and so counted twice, plus the cursor of every
+// audit.jsonl file. The watcher now skips that file (scan.IsTranscriptPath),
+// so nothing re-creates these rows. Run on every Collect, like
+// ResetCollapsedCodexSessions: a burnmon.exe built before the fix shares
+// this store. One indexed pass, a no-op once the store is clean.
+func (s *Store) PurgeAuditSessions() (events, toolCalls, cursors int, err error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`DELETE FROM events WHERE vendor = 'anthropic' AND session_id = 'audit'`)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("store: delete audit events: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	events = int(n)
+	res, err = tx.Exec(`DELETE FROM tool_calls WHERE vendor = 'anthropic' AND session_id = 'audit'`)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("store: delete audit tool calls: %w", err)
+	}
+	n, _ = res.RowsAffected()
+	toolCalls = int(n)
+	res, err = tx.Exec(`DELETE FROM cursors WHERE lower(replace(path, '\', '/')) LIKE '%/audit.jsonl' OR lower(path) = 'audit.jsonl'`)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("store: delete audit cursors: %w", err)
+	}
+	n, _ = res.RowsAffected()
+	cursors = int(n)
+	if err := tx.Commit(); err != nil {
+		return 0, 0, 0, err
+	}
+	return events, toolCalls, cursors, nil
+}

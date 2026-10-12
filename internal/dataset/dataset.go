@@ -653,6 +653,16 @@ func (c *Cache) Collect(cfg *pricing.Config, opts CollectOpts, progress func(don
 		log.Printf("codex collapse reset: removed %d collapsed event(s), %d cursor(s) reset for a full re-read", nEvents, nCursors)
 	}
 
+	// 2026-10-12: drop the rows the live watcher created by reading a local
+	// Cowork session's audit.jsonl as a session of its own (key "audit",
+	// "#udit" in BurnMon Dev). Every Collect, for the same reason as the
+	// Codex reset above; a no-op once the store is clean.
+	if nEvents, nCalls, nCursors, err := c.Store.PurgeAuditSessions(); err != nil {
+		return Payload{}, fmt.Errorf("dataset: purge audit sessions: %w", err)
+	} else if nEvents > 0 || nCalls > 0 || nCursors > 0 {
+		log.Printf("audit purge: removed %d event(s), %d tool call(s), %d cursor(s) read from audit.jsonl", nEvents, nCalls, nCursors)
+	}
+
 	sourceListStart := time.Now()
 	fast, slow, roots := resolveSources(cfg, opts)
 	fast = dedupeCaseInsensitive(fast)
