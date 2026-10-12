@@ -27,20 +27,32 @@ foreach ($t in $Target) {
     }
 }
 
-# Hooks (1.1.0). The extract writes latest.jsonl with a temp file plus rename.
+# Hooks (1.1.0 and up). The extract writes latest.jsonl with a temp file plus rename.
 # SessionStart registers that file with the watcher (--watch), so every write
 # fires FileChanged, and FileChanged copies it to the computer: the main path,
 # no model tokens. Stop, UserPromptSubmit and SessionEnd copy too, as the 1.0
 # fallback for a watcher that does not fire. Hooks of one event run in
 # parallel, so the Stop copy carries the file of the turn before.
+# 1.1.1 diagnostic: every extract run logs to diag.log, and FileChanged also
+# runs extract.py --fired next to the copy, which logs the moment the copy
+# started. UserPromptSubmit copies diag.log next to latest.jsonl (BurnMon
+# reads only .jsonl there). Each copy is its own hook entry, so a missing
+# diag.log can never stop the latest.jsonl copy.
 $script = '${CLAUDE_PLUGIN_ROOT}/scripts/extract.py'
 $watch = [ordered]@{ type = 'command'; command = 'python3'; args = @($script, '--watch'); timeout = 10 }
+$fired = [ordered]@{ type = 'command'; command = 'python3'; args = @($script, '--fired'); timeout = 10 }
 $extract = [ordered]@{ type = 'command'; command = 'python3'; args = @($script); timeout = 30 }
 $extractThrottled = [ordered]@{ type = 'command'; command = 'python3'; args = @($script, '--throttle'); async = $true; timeout = 30 }
 $copies = @(foreach ($t in $Target) {
     [ordered]@{
         type = 'mcp_tool'; server = 'remote-devices'; tool = 'device_commit_files'; timeout = 30
         input = [ordered]@{ files = @([ordered]@{ devicePath = $t; stagedPath = '/mnt/user-data/outputs/.burnmon/cloud/latest.jsonl' }) }
+    }
+})
+$diagCopies = @(foreach ($t in $Target) {
+    [ordered]@{
+        type = 'mcp_tool'; server = 'remote-devices'; tool = 'device_commit_files'; timeout = 30
+        input = [ordered]@{ files = @([ordered]@{ devicePath = ($t.Substring(0, $t.Length - 'latest.jsonl'.Length) + 'diag.log'); stagedPath = '/mnt/user-data/outputs/.burnmon/cloud/diag.log' }) }
     }
 })
 $hooks = [ordered]@{
@@ -50,8 +62,8 @@ $hooks = [ordered]@{
         PostToolUse      = @([ordered]@{ hooks = @($extractThrottled) })
         SubagentStop     = @([ordered]@{ hooks = @($extract) })
         Stop             = @([ordered]@{ hooks = @($extract) + $copies })
-        FileChanged      = @([ordered]@{ matcher = 'latest.jsonl'; hooks = $copies })
-        UserPromptSubmit = @([ordered]@{ hooks = $copies })
+        FileChanged      = @([ordered]@{ matcher = 'latest.jsonl'; hooks = @($fired) + $copies })
+        UserPromptSubmit = @([ordered]@{ hooks = $copies + $diagCopies })
         SessionEnd       = @([ordered]@{ hooks = $copies })
     }
 }

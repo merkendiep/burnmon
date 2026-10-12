@@ -74,7 +74,7 @@ def write_jsonl(path, rows):
             f.write(json.dumps(r) + "\n")
 
 
-class ExtractTest(unittest.TestCase):
+class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = self.tmp.name
@@ -120,12 +120,14 @@ class ExtractTest(unittest.TestCase):
             assistant("req_2", "msg_2", 20, "2026-10-12T10:00:05Z", entrypoint),
         ])
 
+
+class ExtractTest(Base):
     # version
 
     def test_version_matches_manifest(self):
         with open(os.path.join(PLUGIN, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
             manifest = json.load(f)
-        self.assertEqual(manifest["version"], "1.1.0")
+        self.assertEqual(manifest["version"], "1.1.1")
         self.assertEqual(self.mod.__version__, manifest["version"])
 
     # --watch
@@ -243,6 +245,103 @@ class ExtractTest(unittest.TestCase):
             f.write("OLD\n")
         self.run_hook([])
         self.assertEqual(len(self.read_latest()), 2)
+
+
+DIAG_KEYS = {"at", "v", "sid", "hook", "mode", "result", "rows", "newest", "event",
+             "latest_mtime", "latest_rows", "age_s"}
+
+
+class DiagTest(Base):
+    """1.1.1: diag.log records when each hook ran and what it did, timestamps only."""
+
+    def diag(self):
+        p = os.path.join(self.out, "diag.log")
+        if not os.path.exists(p):
+            return []
+        with open(p, encoding="utf-8") as f:
+            return [json.loads(l) for l in f if l.strip()]
+
+    def fired_input(self, event="change"):
+        return json.dumps({"session_id": "sess-1", "transcript_path": self.transcript,
+                           "hook_event_name": "FileChanged", "event": event,
+                           "file_path": os.path.join(self.out, "latest.jsonl")})
+
+    def test_watch_logs_session_start(self):
+        self.run_hook(["--watch"], stdin="")
+        d = self.diag()
+        self.assertEqual(len(d), 1)
+        self.assertEqual((d[0]["hook"], d[0]["mode"], d[0]["result"]),
+                         ("SessionStart", "watch", "watch registered"))
+
+    def test_extract_logs_write(self):
+        self.basic_transcript()
+        self.run_hook([], event="Stop")
+        d = self.diag()
+        self.assertEqual(len(d), 1)
+        self.assertEqual((d[0]["hook"], d[0]["mode"], d[0]["result"], d[0]["rows"]),
+                         ("Stop", "extract", "wrote", 2))
+        self.assertEqual(d[0]["newest"], "2026-10-12T10:00:05Z")
+        self.assertEqual(d[0]["sid"], "sess-1")
+
+    def test_throttle_logs_skip_with_age(self):
+        self.basic_transcript()
+        os.makedirs(self.out)
+        with open(self.latest(), "w", encoding="utf-8") as f:
+            f.write("OLD\n")
+        self.run_hook(["--throttle"], event="PostToolUse")
+        d = self.diag()
+        self.assertEqual((d[0]["hook"], d[0]["mode"], d[0]["result"]),
+                         ("PostToolUse", "throttle", "throttled"))
+        self.assertLess(d[0]["age_s"], 20)
+
+    def test_fired_logs_file_changed(self):
+        self.basic_transcript()
+        self.run_hook([], event="Stop")
+        out = self.run_hook(["--fired"], stdin=self.fired_input())
+        self.assertEqual(out, "", "--fired prints nothing")
+        d = self.diag()
+        self.assertEqual(len(d), 2)
+        f = d[1]
+        self.assertEqual((f["hook"], f["mode"], f["event"], f["latest_rows"]),
+                         ("FileChanged", "fired", "change", 2))
+        self.assertIn("latest_mtime", f)
+        self.assertEqual(len(self.read_latest()), 2, "--fired never writes latest.jsonl")
+
+    def test_fired_when_file_is_gone(self):
+        self.run_hook(["--fired"], stdin=self.fired_input("unlink"))
+        d = self.diag()
+        self.assertEqual((d[0]["event"], d[0]["latest_rows"]), ("unlink", None))
+
+    def test_nothing_logged_outside_cloud(self):
+        self.basic_transcript(entrypoint="cli")
+        self.run_hook([], entrypoint="cli")
+        self.run_hook(["--throttle"], entrypoint="cli")
+        self.run_hook(["--fired"], entrypoint="cli", stdin=self.fired_input())
+        self.run_hook(["--watch"], entrypoint="cli", stdin="")
+        self.assertFalse(os.path.exists(self.out), "no files at all outside a cloud session")
+
+    def test_diag_holds_no_content(self):
+        self.basic_transcript()
+        self.run_hook(["--watch"], stdin="")
+        self.run_hook([], event="SubagentStop")
+        self.run_hook(["--throttle"], event="PostToolUse")
+        self.run_hook(["--fired"], stdin=self.fired_input())
+        with open(os.path.join(self.out, "diag.log"), encoding="utf-8") as f:
+            body = f.read()
+        for s in SECRETS + (self.root,):
+            self.assertNotIn(s, body)
+        for line in self.diag():
+            self.assertLessEqual(set(line), DIAG_KEYS)
+            self.assertEqual(line["v"], "1.1.1")
+
+    def test_diag_rotates_past_256_kb(self):
+        os.makedirs(self.out)
+        p = os.path.join(self.out, "diag.log")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("x" * (256 * 1024 + 1))
+        self.run_hook(["--watch"], stdin="")
+        self.assertTrue(os.path.exists(p + ".1"))
+        self.assertEqual(len(self.diag()), 1)
 
 
 if __name__ == "__main__":

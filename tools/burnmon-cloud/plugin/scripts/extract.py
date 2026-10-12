@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BurnMon cloud, extract hook (1.1.0).
+"""BurnMon cloud, extract hook (1.1.1).
 
 Runs inside a cloud Cowork session. Reads the hook input on stdin, then the
 session transcript and its subagent files, and writes a usage-only extract:
@@ -14,12 +14,16 @@ Modes:
   --watch      SessionStart: print the watchPaths output that makes the
                plugin's FileChanged hook fire on every write of latest.jsonl,
                then exit; no extract. Prints nothing outside a cloud session.
+  --fired      FileChanged (1.1.1 diagnostic): log when the hook fired and
+               what latest.jsonl held at that moment; no extract.
 
 Outputs, under /mnt/user-data/outputs/.burnmon/cloud/:
   <session_id>.jsonl   the extract for this session
   latest.jsonl         the same rows under a fixed name; the plugin's copy
                        hooks send this file to BurnMon's drop folder on the
                        user's computer
+  diag.log             1.1.1 diagnostic: one line per hook run (time, hook,
+                       result, row count, short session id); no content
   errors.log           only when something failed
 
 Never fails the turn: every error is logged and the script exits 0.
@@ -30,11 +34,12 @@ import os
 import sys
 import time
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 OUT = "/mnt/user-data/outputs/.burnmon/cloud"
 CLOUD_ENTRYPOINT = "remote_cowork"
 THROTTLE_SECONDS = 20
+DIAG_MAX_BYTES = 256 * 1024
 USAGE_KEYS = (
     "input_tokens",
     "output_tokens",
@@ -105,31 +110,82 @@ def main_transcript(tpath):
     return tpath
 
 
+def in_cloud():
+    return os.environ.get("CLAUDE_CODE_ENTRYPOINT") == CLOUD_ENTRYPOINT
+
+
+def now_iso(t=None):
+    t = time.time() if t is None else t
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(t)) + ".%03dZ" % int((t % 1) * 1000)
+
+
+def diag(hook, mode, result, **extra):
+    # 1.1.1 diagnostic: one line per hook run, so a live test can tell when
+    # each hook fired inside the session. Timestamps, counts and the short
+    # session id only; never content or paths. Never raises.
+    try:
+        os.makedirs(OUT, exist_ok=True)
+        p = os.path.join(OUT, "diag.log")
+        if os.path.exists(p) and os.path.getsize(p) > DIAG_MAX_BYTES:
+            os.replace(p, p + ".1")
+        line = {"at": now_iso(), "v": __version__, "hook": hook, "mode": mode, "result": result}
+        line.update(extra)
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(json.dumps(line, separators=(",", ":")) + "\n")
+    except Exception:
+        pass
+
+
+def latest_age():
+    try:
+        return time.time() - os.path.getmtime(os.path.join(OUT, "latest.jsonl"))
+    except OSError:
+        return None
+
+
 def watch():
-    if os.environ.get("CLAUDE_CODE_ENTRYPOINT") != CLOUD_ENTRYPOINT:
+    if not in_cloud():
         return
     out = {"hookSpecificOutput": {
         "hookEventName": "SessionStart",
         "watchPaths": [os.path.join(OUT, "latest.jsonl")],
     }}
     sys.stdout.write(json.dumps(out, separators=(",", ":")) + "\n")
+    diag("SessionStart", "watch", "watch registered")
 
 
-def recently_written():
+def fired():
+    # FileChanged command hook, run in parallel with the copy hooks of the
+    # same event: its timestamp is the moment the copy started.
+    if not in_cloud():
+        return
+    hook = json.load(sys.stdin)
+    p = os.path.join(OUT, "latest.jsonl")
     try:
-        age = time.time() - os.path.getmtime(os.path.join(OUT, "latest.jsonl"))
+        mtime = now_iso(os.path.getmtime(p))
+        with open(p, encoding="utf-8") as f:
+            nrows = sum(1 for l in f if l.strip())
     except OSError:
-        return False
-    return age < THROTTLE_SECONDS
+        mtime, nrows = None, None
+    diag("FileChanged", "fired", "logged", sid=(hook.get("session_id") or "")[:8],
+         event=hook.get("event"), latest_mtime=mtime, latest_rows=nrows)
 
 
-def extract():
+def extract(throttle):
     if os.environ.get("CLAUDE_CODE_ENTRYPOINT", CLOUD_ENTRYPOINT) != CLOUD_ENTRYPOINT:
         return
     hook = json.load(sys.stdin)
-    tpath = hook.get("transcript_path") or ""
+    event = hook.get("hook_event_name") or "unknown"
     sid = hook.get("session_id") or "unknown"
+    mode = "throttle" if throttle else "extract"
+    if throttle:
+        age = latest_age()
+        if age is not None and age < THROTTLE_SECONDS:
+            diag(event, mode, "throttled", sid=sid[:8], age_s=round(age, 1))
+            return
+    tpath = hook.get("transcript_path") or ""
     if not os.path.isfile(tpath):
+        diag(event, mode, "no transcript", sid=sid[:8])
         return
     tpath = main_transcript(tpath)
     rows = read_rows(tpath, "main")
@@ -141,6 +197,8 @@ def extract():
     out = sorted((r for r in rows.values() if r["entrypoint"] == CLOUD_ENTRYPOINT),
                  key=lambda r: (r["ts"] or "", r["request_id"] or ""))
     if not out:
+        if in_cloud():
+            diag(event, mode, "no cloud rows", sid=sid[:8])
         return
     body = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in out)
     os.makedirs(OUT, exist_ok=True)
@@ -152,19 +210,20 @@ def extract():
         with open(tmp, "w", encoding="utf-8") as f:
             f.write(body)
         os.replace(tmp, os.path.join(OUT, name))
+    diag(event, mode, "wrote", sid=sid[:8], rows=len(out), newest=out[-1]["ts"])
 
 
 def main(argv):
     flags = set(argv)
-    unknown = flags - {"--watch", "--throttle"}
+    unknown = flags - {"--watch", "--throttle", "--fired"}
     if unknown:
         raise ValueError("unknown flag " + " ".join(sorted(unknown)))
     if "--watch" in flags:
         watch()
-        return
-    if "--throttle" in flags and recently_written():
-        return
-    extract()
+    elif "--fired" in flags:
+        fired()
+    else:
+        extract("--throttle" in flags)
 
 
 def run(argv):

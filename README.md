@@ -77,9 +77,13 @@ Set it up once per computer:
        cd C:\path\to\burnmon\tools\burnmon-cloud
        .\build.ps1 -Target 'C:\path\to\burnmon\.burnmon\cloud\latest.jsonl'
 
-2. In Claude, open Customize > Plugins > Add and pick `dist\burnmon-cloud-1.1.0.plugin`.
+2. In Claude, open Customize > Plugins > Add and pick `dist\burnmon-cloud-1.1.1.plugin`.
 3. Connect your BurnMon folder, or any folder above it, to the cloud sessions you want
    counted.
+
+Plugin 1.1.1 also copies `diag.log` into the same folder: one line per hook run, with the
+time, the hook name and a row count, and no content. BurnMon ignores it. It is there to
+find out where a delivery delay comes from.
 
 What it does not cover:
 
@@ -88,13 +92,14 @@ What it does not cover:
 - The numbers are a lower bound. The transcript misses some side calls. Measured on one
   session at seven turn boundaries: 0 to 7 percent of the main model's tokens (mostly cache
   reads), and every small Haiku call, which cost under 1 percent of that session.
-- Each turn should reach BurnMon a few seconds after it ends, and the work of a subagent
-  (an agent Claude starts for research or parallel tasks) when that subagent finishes.
-  BurnMon shows it at the minute it was actually spent, so the chart fills in afterwards.
-  This uses a file watcher inside the cloud session. The watcher is documented, but plugin
-  1.1.0 has not yet been confirmed in a live cloud session. If the watcher does not fire,
-  the plugin still copies at your next message and when the session ends, so the last
-  request of a turn arrives one turn late, as in 1.0.0.
+- Work done while a turn runs reaches BurnMon about 10 seconds after it is written. That
+  includes the work of a subagent (an agent Claude starts for research or parallel tasks),
+  which arrives when the subagent finishes. The end of a turn arrives about 4 minutes after
+  the turn ends, or with your next message if that comes first (measured twice on
+  2026-10-12, plugin 1.1.0). BurnMon shows each request at the minute it was actually
+  spent, so the chart fills in afterwards.
+- Two cloud sessions running at the same time copy to the same file and overwrite each
+  other there. BurnMon still keeps the rows of both: it adds rows and never removes them.
 - The plugin reads Claude's transcript format, which Anthropic documents as internal and
   liable to change between versions. If BurnMon stops showing Cowork (Cloud) after a Claude
   update, that is the first place to look.
