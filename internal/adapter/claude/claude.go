@@ -200,6 +200,9 @@ func contentByteLen(content any) int64 {
 // line consumed. A trailing partial line (the file still being written) is
 // left for the next call.
 func (Adapter) Parse(path string, from int64) ([]schema.Event, []schema.ToolCall, int64, error) {
+	if scan.IsCloudDropPath(path) {
+		return parseCloudDrop(path)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, nil, from, err

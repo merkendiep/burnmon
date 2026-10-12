@@ -515,13 +515,17 @@ body.todo-grow .todopanel{flex:1 1 auto; max-height:none; min-height:0}
   // (~142deg), ~50deg clear of each - rather than splitting an already
   // narrower gap elsewhere (e.g. next to codex/hermes, ~20-30deg apart).
   var HARNESS_HUE = {
-    claudeCode: '#ffa028', cowork: '#4da6ff', codex: '#a78bfa',
+    claudeCode: '#ffa028', cowork: '#4da6ff', coworkCloud: '#67e8f9', codex: '#a78bfa',
     copilotCli: '#73d742', copilotVscode: '#4ade80', hermes: '#e879f9',
     burnmonDev: '#ffd83d', wsl: '#ff6fae', other: '#66788c'
   };
   var AGENT_COLOR = {
     'claude-code': HARNESS_HUE.claudeCode,
     'cowork': HARNESS_HUE.cowork,
+    // Cowork (Cloud), 2026-10-12: cloud-run Cowork sessions delivered by the
+    // BurnMon cloud plugin. A light cyan, lighter and greener than Cowork's
+    // blue, so the two read as one family but never as the same bucket.
+    'cowork-cloud': HARNESS_HUE.coworkCloud,
     'codex': HARNESS_HUE.codex,
     'hermes': HARNESS_HUE.hermes,
     'copilot-cli': HARNESS_HUE.copilotCli,
@@ -533,7 +537,7 @@ body.todo-grow .todopanel{flex:1 1 auto; max-height:none; min-height:0}
   // light twin by key, so the maps above and below stay the one place that
   // says which tool gets which hue.
   var HARNESS_HUE_LIGHT = {
-    claudeCode: '#c26a00', cowork: '#1a73d9', codex: '#7c5ce6',
+    claudeCode: '#c26a00', cowork: '#1a73d9', coworkCloud: '#0e7490', codex: '#7c5ce6',
     copilotCli: '#3f9a14', copilotVscode: '#0f9448', hermes: '#b53fcf',
     burnmonDev: '#a68100', wsl: '#d6246f', other: '#66788c'
   };

@@ -266,10 +266,10 @@
   var ROVER_STARTS = [{x: RW + 0.5, y: RW + 0.5, next: 1500}];
 
   var VENDOR_SPRITE = {
-    'claude-code': 'astronautA', 'cowork': 'astronautA', 'codex': 'astronautB',
+    'claude-code': 'astronautA', 'cowork': 'astronautA', 'cowork-cloud': 'astronautA', 'codex': 'astronautB',
     'copilot-cli': 'alien', 'copilot-vscode': 'alien', 'hermes': 'alien'
   };
-  var SITE_VENDOR = {'claude-code': 'workerA', 'cowork': 'workerA', 'codex': 'workerB'};
+  var SITE_VENDOR = {'claude-code': 'workerA', 'cowork': 'workerA', 'cowork-cloud': 'workerA', 'codex': 'workerB'};
 
   // What a theme swaps. Stage labels and colours, rules, LAYOUT, slots and
   // doors are shared. px* is the plan view: floor [style, colour] per room,
@@ -312,7 +312,7 @@
   ROOM_IDS.forEach(function(id){ THEME_DEF.space.names[id] = TEMPLATES[id].name; });
   var THEMES = ['site', 'space'];
   var AGENT_LABEL = {
-    'claude-code': 'Claude Code', 'cowork': 'Cowork', 'codex': 'Codex',
+    'claude-code': 'Claude Code', 'cowork': 'Cowork', 'cowork-cloud': 'Cowork (Cloud)', 'codex': 'Codex',
     'copilot-cli': 'Copilot CLI', 'copilot-vscode': 'Copilot VS Code', 'hermes': 'Hermes'
   };
 

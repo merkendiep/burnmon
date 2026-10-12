@@ -1582,13 +1582,13 @@ function sessionChartLabel(s){
 // over from a rewrite.
 var VENDOR_COLOR_FAMILIES = {
   dark: {
-    'claude-code': '#E8A16B', 'cowork': '#F2C29B',
+    'claude-code': '#E8A16B', 'cowork': '#F2C29B', 'cowork-cloud': '#F8DCC2',
     'codex': '#3EDCB0', 'codex-desktop': '#82E8C8',
     'copilot-cli': '#4DA3FF', 'copilot-vscode': '#8AC4FF',
     'hermes': '#B18CFF'
   },
   light: {
-    'claude-code': '#B5651D', 'cowork': '#D98A3D',
+    'claude-code': '#B5651D', 'cowork': '#D98A3D', 'cowork-cloud': '#9A5518',
     'codex': '#0E5C4E', 'codex-desktop': '#2F8F79',
     'copilot-cli': '#1F5FAF', 'copilot-vscode': '#4A85D0',
     'hermes': '#6647C2'
@@ -2122,7 +2122,7 @@ vsTimer = setInterval(pollVendorStrip, 60000);
 // Vendor-agnostic replacement for the old Months/Weeks/Days tabs (41A):
 // one page, one bound Go-side call per filter change, never the page
 // aggregating raw events itself.
-var AGENT_LABELS = {'claude-code':'Claude Code', 'cowork':'Cowork', 'codex':'Codex', 'hermes':'Hermes', 'copilot-cli':'Copilot CLI', 'copilot-vscode':'Copilot (VS Code)'};
+var AGENT_LABELS = {'claude-code':'Claude Code', 'cowork':'Cowork', 'cowork-cloud':'Cowork (Cloud)', 'codex':'Codex', 'hermes':'Hermes', 'copilot-cli':'Copilot CLI', 'copilot-vscode':'Copilot (VS Code)'};
 var UI_HIST = {period:'week', range:'30', from:'', to:'', vendor:'', owner:'', client:''};
 var histFiltersBuilt = false;
 

@@ -16,6 +16,7 @@ var SurfaceLabel = map[string]string{
 	"cli":        "Claude Code",
 	"code_agent": "Claude Code, agent run",
 	"desktop":    "Claude Desktop",
+	"cloud":      "Cowork in the cloud",
 	"unknown":    "Unknown",
 }
 
@@ -30,6 +31,7 @@ var SurfaceLabel = map[string]string{
 var AgentLabel = map[string]string{
 	"claude-code":    "Claude Code",
 	"cowork":         "Cowork",
+	"cowork-cloud":   "Cowork (Cloud)",
 	"codex":          "Codex",
 	"copilot-cli":    "Copilot CLI",
 	"copilot-vscode": "Copilot (VS Code)",

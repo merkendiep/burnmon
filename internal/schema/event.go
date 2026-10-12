@@ -10,8 +10,8 @@ import "time"
 // on upsert.
 type Event struct {
 	Vendor    string // "anthropic", "openai", "github", "nous"
-	Agent     string // "claude-code", "cowork", "codex", "copilot-cli", "hermes"
-	Surface   string // "cli", "vscode", "desktop", "code_agent", "unknown"
+	Agent     string // "claude-code", "cowork", "cowork-cloud", "codex", "copilot-cli", "hermes"
+	Surface   string // "cli", "vscode", "desktop", "cloud", "code_agent", "unknown"
 	SessionID string
 	RequestID string // dedup key together with Vendor and SessionID; Codex: session id + turn index
 	ParentID  string // Claude subagent's parent session id, else ""

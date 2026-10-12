@@ -87,8 +87,9 @@ Priority order lives here and only here.
        plugin whose Stop hook writes a usage-only, deduplicated JSONL inside the cloud container and
        delivers it to a connected laptop folder that BurnMon reads; until then show "N cloud Cowork
        sessions, not measured" from `remote-session-spaces.json`. Gated on live tests (hook fires in
-       cloud, hook-driven delivery). Spec: `2026-10-12_cowork_cloud_bucket_spec.md`; test plugin:
-       `..\tools\burnmon-cloud-probe`. Build after the park (Wilco, 2026-10-12).
+       cloud, hook-driven delivery: both passed 2026-10-12). Spec: `2026-10-12_cowork_cloud_bucket_spec.md`; test plugin:
+       `..\tools\burnmon-cloud-probe`. Second park exception (Wilco, 2026-10-12, "build now"): built the same
+       day, plugin `..\tools\burnmon-cloud`, agent `cowork-cloud`. Not built yet: the "not measured" counter.
        Research: `..\04_assets\2026-10-12_cloud_cowork_capture_research.md`.
        Proof: `..\04_assets\2026-10-12_cloud_cowork_sessions_proof.md`.
     e. Bug, found 2026-10-12: the live watcher counts a local Cowork session's `audit.jsonl` as a

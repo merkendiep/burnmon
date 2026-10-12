@@ -19,6 +19,7 @@ import (
 var AgentLabel = map[string]string{
 	"claude-code":    "Claude Code",
 	"cowork":         "Cowork",
+	"cowork-cloud":   "Cowork (Cloud)",
 	"codex":          "Codex",
 	"hermes":         "Hermes",
 	"copilot-cli":    "Copilot CLI",
