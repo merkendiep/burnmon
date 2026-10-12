@@ -127,7 +127,7 @@ class ExtractTest(Base):
     def test_version_matches_manifest(self):
         with open(os.path.join(PLUGIN, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
             manifest = json.load(f)
-        self.assertEqual(manifest["version"], "1.1.1")
+        self.assertEqual(manifest["version"], "1.1.2")
         self.assertEqual(self.mod.__version__, manifest["version"])
 
     # --watch
@@ -174,6 +174,19 @@ class ExtractTest(Base):
         with open(os.path.join(self.out, "sess-1.jsonl"), encoding="utf-8") as f:
             self.assertEqual(f.read(), body)
         self.assertEqual([n for n in os.listdir(self.out) if n.endswith(".tmp")], [])
+
+    def test_latest_is_rewritten_in_place(self):
+        # 1.1.2: a rename gives latest.jsonl a new inode, and the FileChanged
+        # watcher of an existing file then never fires again (measured
+        # 2026-10-12). The same inode must survive every rewrite.
+        self.basic_transcript()
+        self.run_hook([])
+        ino = os.stat(self.latest()).st_ino
+        write_jsonl(self.transcript, [assistant("req_1", "msg_1", 8, "2026-10-12T10:00:01Z")])
+        self.run_hook([])
+        self.assertEqual(os.stat(self.latest()).st_ino, ino)
+        self.assertEqual([r["request_id"] for r in self.read_latest()], ["req_1"],
+                         "a shorter extract leaves no stale tail")
 
     def test_extract_skips_local_rows(self):
         self.basic_transcript(entrypoint="cli")
@@ -332,7 +345,7 @@ class DiagTest(Base):
             self.assertNotIn(s, body)
         for line in self.diag():
             self.assertLessEqual(set(line), DIAG_KEYS)
-            self.assertEqual(line["v"], "1.1.1")
+            self.assertEqual(line["v"], self.mod.__version__)
 
     def test_diag_rotates_past_256_kb(self):
         os.makedirs(self.out)

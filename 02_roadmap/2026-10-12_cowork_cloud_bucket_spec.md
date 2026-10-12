@@ -145,25 +145,31 @@ between versions" (code.claude.com/docs/en/sessions).
   471,071 tokens, none of them in the transcript (side calls), costing 0.08 of 10.82 USD list price.
   Verdict against the kill criteria: under the 10 percent line, so the numbers stay unlabelled as
   estimates, with the lower-bound tooltip. Limit: one session, one day, seven boundaries.
-- Test 5 (copy after each write), plugin 1.1.0 (`204ea05`), 2026-10-12, cloud session `b2ca13ab`,
-  folder `C:\ZND\50_projects\burnmon` connected. PARTIAL PASS. Mid-turn copies work: the subagent's
-  rows reached the laptop at 22:34:10 local, 9 s after its last request (22:34:01) and while the
-  main turn still ran its own `sleep 30`; only the FileChanged copy can deliver then. Turn-end
-  copies arrive late but without a next message: turn ended 22:45:23, file with its request
-  landed 22:49:32 (4 min 9 s); the turn before, Stop extract about 22:38:54, landed 22:43:02
-  (4 min 8 s). The Stop fallback copy carried the previous file both times, as expected. Rehearsed
-  in a build container (Claude Code 2.1.296, headless, same rclone mount): FileChanged fired within
-  1 s of every temp-plus-rename write, also while idle after Stop, for a `command` and an
-  `mcp_tool` hook (to a local logging server). Inferred, not proven: the 4 minutes sit in the
-  Cowork cloud runner or the device bridge, not in the hook engine. Seen once and not explained:
-  after the main turn's `sleep 30`, the throttled PostToolUse extract left no trace. Also seen:
-  a second cloud session (the build session, plugin 1.0.0) overwrote the laptop's `latest.jsonl`
-  while the test ran; BurnMon keeps both sessions' rows, the file holds one session at a time.
-- Test 6 (where the delay sits): not run yet. Plugin 1.1.1 built 2026-10-12; `claude plugin
-  validate --strict` passes; 23 extract tests pass on Python 3.10 and 3.13; a headless rehearsal
-  in the build container logged SessionStart, PostToolUse (wrote and throttled), SubagentStop,
-  Stop and FileChanged (fired 0.6 to 0.7 s after each write, with nearby writes merged into one
-  event) in `diag.log`.
+- Test 5 (copy after each write), 2026-10-12, cloud session `b2ca13ab`. CORRECTION: this session ran
+  plugin 1.0.0. Plugin 1.1.0 was built but not installed (the plugin page still showed 1.0.0, 4 hooks).
+  So it tested 1.0.0: subagent rows landed mid-turn (22:34:10 local) and turn ends landed about 4
+  minutes after the turn (4 min 8 s and 4 min 9 s) without a next message. Inferred from 1.1.1's log
+  below: the cloud runner stops Claude Code after a few idle minutes (SessionEnd copies the file) and
+  restarts it at the next message (SessionStart `resume`). Also seen: a second cloud session with the
+  same target (the build session) overwrote the laptop's `latest.jsonl`; BurnMon keeps both sessions'
+  rows, the file holds one session at a time.
+- Test 6, plugin 1.1.1 (`607b00e`), 2026-10-12, cloud session `eb7fbea0`, plus the build session after
+  it picked up 1.1.1. Plain turn: Stop extract wrote at 21:07:21.189 UTC, FileChanged fired at
+  21:07:21.837, laptop file written 23:07:28 local (about 6.5 s). Subagent turn: subagent rows landed
+  at 23:14:42 and 23:15:15 local, before the turn ended. FAIL for the end of that turn: it landed only
+  with the next message, 5 minutes later. Root cause, from `diag.log` and the runner's own debug log
+  (`/tmp/claude-code.log`, a yardstick only): after each SessionStart registration, FileChanged fired
+  exactly once (three registrations, two sessions); every later write fired nothing. Reproduced in
+  headless Claude Code 2.1.296 on the same rclone mount: with `latest.jsonl` already present when the
+  watch is registered, temp-file-plus-rename writes fire once and then never again (the watcher stays
+  on the replaced inode); in-place writes fired on all four writes. Also measured: SubagentStop fires
+  about 2 minutes after some turns with no new rows (a post-turn subagent, inferred).
+- Plugin 1.1.2: `latest.jsonl` is rewritten in place (same inode; write first, cut the tail after, so
+  it is never empty); the session file keeps temp-file-plus-rename. 24 extract tests pass on Python
+  3.10 and 3.13 (new: the inode survives a rewrite and a shorter extract leaves no tail);
+  `claude plugin validate --strict` passes.
+- Test 7 (plugin 1.1.2, live): not run yet. Same steps as test 6. Pass: every turn end lands within
+  about 10 s, and `diag.log` shows a FileChanged line after every write.
 
 ## Done when
 
@@ -196,9 +202,12 @@ between versions" (code.claude.com/docs/en/sessions).
 ## Known limits
 
 - Sessions with no connected folder, and sessions started on web or mobile, cannot deliver.
-- Plugin 1.0.0: the final turn arrives late or, if the session ends, only through a SessionEnd
-  pass. Plugin 1.1.0: mid-turn work arrives in about 10 s, the end of a turn about 4 minutes
-  after it (test 5); test 6 locates that delay.
+- Plugin 1.0.0: the end of a turn arrives with the next message, or when the runner stops the
+  idle session (about 4 minutes, test 5). Plugins 1.1.0 and 1.1.1: FileChanged fires once per
+  session start (test 6). Plugin 1.1.2 fixes that; live result pending (test 7).
+- The extract has no tool calls, so the Station cannot tell a cloud session that works from one
+  that waits. BurnMon Dev shows it as Thinking until 3 minutes after its newest request, then
+  Waiting on you (the Copilot in VS Code rule).
 - Two cloud sessions at once overwrite each other's `latest.jsonl` on the laptop. No rows are
   lost in BurnMon (upserts only), but the file is not a per-session record.
 - The probe's mcp_tool hook hard-codes the laptop path; the real plugin must take it from config.

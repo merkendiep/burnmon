@@ -743,7 +743,7 @@ func ApplyStages(sessions []*Session, st *store.Store, now time.Time) error {
 	}
 	var apply func(s *Session)
 	apply = func(s *Session) {
-		in := stage.Input{Now: now, NoToolTrail: s.Agent == insight.CopilotVSCodeAgent}
+		in := stage.Input{Now: now, NoToolTrail: noToolTrail(s.Agent)}
 		if n := len(s.turns); n > 0 {
 			in.LastTurn = s.turns[n-1].At
 		}
@@ -768,6 +768,18 @@ func ApplyStages(sessions []*Session, st *store.Store, now time.Time) error {
 		apply(s)
 	}
 	return nil
+}
+
+// coworkCloudAgent is the agent of the Cowork (Cloud) drop rows
+// (internal/adapter/claude/cloud.go).
+const coworkCloudAgent = "cowork-cloud"
+
+// noToolTrail reports whether an agent's trail never records tool calls, so
+// a newest turn without a tool says nothing about a hand-back: Copilot in VS
+// Code (one OTel row per request) and Cowork (Cloud), whose drop carries
+// usage rows only and lands some seconds after each write.
+func noToolTrail(agent string) bool {
+	return agent == insight.CopilotVSCodeAgent || agent == coworkCloudAgent
 }
 
 // inLatestTurn reports whether c belongs to the session's newest turn.

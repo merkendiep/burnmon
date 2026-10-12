@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BurnMon cloud, extract hook (1.1.1).
+"""BurnMon cloud, extract hook (1.1.2).
 
 Runs inside a cloud Cowork session. Reads the hook input on stdin, then the
 session transcript and its subagent files, and writes a usage-only extract:
@@ -34,7 +34,7 @@ import os
 import sys
 import time
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 
 OUT = "/mnt/user-data/outputs/.burnmon/cloud"
 CLOUD_ENTRYPOINT = "remote_cowork"
@@ -202,15 +202,30 @@ def extract(throttle):
         return
     body = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in out)
     os.makedirs(OUT, exist_ok=True)
-    # latest.jsonl last: its write is what fires the FileChanged copy, so the
-    # session file is complete by then. Temp file plus rename, so the watcher
-    # sees one finished write and never a half file.
-    for name in (sid + ".jsonl", "latest.jsonl"):
-        tmp = os.path.join(OUT, name + "." + str(os.getpid()) + ".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(body)
-        os.replace(tmp, os.path.join(OUT, name))
+    # The session file: temp file plus rename, never half written.
+    tmp = os.path.join(OUT, sid + ".jsonl." + str(os.getpid()) + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(body)
+    os.replace(tmp, os.path.join(OUT, sid + ".jsonl"))
+    # latest.jsonl last, since its write fires the FileChanged copy, and in
+    # place: a rename gives the file a new inode, and the watcher of a file
+    # that already existed then never fires again (measured 2026-10-12, 1.1.1).
+    # Write first, cut the tail after, so the file is never empty; rows only
+    # grow, so a reader at worst sees the old tail for a moment.
+    write_in_place(os.path.join(OUT, "latest.jsonl"), body)
     diag(event, mode, "wrote", sid=sid[:8], rows=len(out), newest=out[-1]["ts"])
+
+
+def write_in_place(path, body):
+    data = body.encode("utf-8")
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        view = memoryview(data)
+        while view:
+            view = view[os.write(fd, view):]
+        os.ftruncate(fd, len(data))
+    finally:
+        os.close(fd)
 
 
 def main(argv):

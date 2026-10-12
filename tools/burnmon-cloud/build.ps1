@@ -27,7 +27,8 @@ foreach ($t in $Target) {
     }
 }
 
-# Hooks (1.1.0 and up). The extract writes latest.jsonl with a temp file plus rename.
+# Hooks (1.1.0 and up). The extract rewrites latest.jsonl in place (1.1.2: a rename
+# made the watcher go deaf after one event).
 # SessionStart registers that file with the watcher (--watch), so every write
 # fires FileChanged, and FileChanged copies it to the computer: the main path,
 # no model tokens. Stop, UserPromptSubmit and SessionEnd copy too, as the 1.0
