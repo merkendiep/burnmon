@@ -88,7 +88,7 @@ Priority order lives here and only here.
        delivers it to a connected laptop folder that BurnMon reads; until then show "N cloud Cowork
        sessions, not measured" from `remote-session-spaces.json`. Gated on live tests (hook fires in
        cloud, hook-driven delivery: both passed 2026-10-12). Spec: `2026-10-12_cowork_cloud_bucket_spec.md`; test plugin:
-       `..\tools\burnmon-cloud-probe`. Second park exception (Wilco, 2026-10-12, "build now"): built the same
+       `..\tools\burnmon-cloud-probe` (removed 2026-10-12, in git history at `be652f9`). Second park exception (Wilco, 2026-10-12, "build now"): built the same
        day, plugin `..\tools\burnmon-cloud`, agent `cowork-cloud`. **DONE 2026-10-12** (`a249bc5`), live in
        BurnMon Dev the same evening. Not built yet: the "not measured" counter.
        Research: `..\04_assets\2026-10-12_cloud_cowork_capture_research.md`.

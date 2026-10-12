@@ -48,7 +48,7 @@ between versions" (code.claude.com/docs/en/sessions).
 
 ### Part A, the plugin (runs in the cloud container)
 
-`tools\burnmon-cloud-probe` is the test build (0.1.0). The real plugin is the same shape:
+`tools\burnmon-cloud-probe` (removed 2026-10-12, in git history at `be652f9`) is the test build (0.1.0). The real plugin is the same shape:
 
 - A Stop hook (`command`, python3) reads the hook input, the transcript and its subagent files, and
   writes `/mnt/user-data/outputs/.burnmon/cloud/<session_id>.jsonl`: one line per request, last row
