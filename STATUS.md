@@ -1,6 +1,21 @@
 # BurnMon, status
 
-What is true at this commit (2026-10-03): **`burnmon-dev.exe` is v0.4.0-alpha.10**
+What is true at this commit (2026-10-12): `HEAD` and `origin/main` are `2728264` (checked
+2026-10-12 with `git ls-remote origin HEAD`). No new tag: `burnmon-dev.exe` still reports
+`0.4.0-alpha.10` and `burnmon.exe` and `burnmon-cli.exe` report `0.3.2` (version constants
+unchanged), but a build from `main` carries more than those tags. Station backlog work from
+2026-10-03 to 2026-10-11 (see `SESSION_LOG.md`). The live watcher no longer counts a Cowork
+session's `audit.jsonl` as a second session (`c8d85d9`, roadmap row 10e); on Wilco's store the
+purge removed at least 47.6M tokens from that day's Cowork total. Cowork (Cloud) (`a249bc5`, row
+10d): cloud-run Cowork sessions leave no local transcript, so the `burnmon-cloud` plugin in
+`tools\burnmon-cloud` delivers a usage-only extract into `.burnmon\cloud` next to the exe, shown
+as agent `cowork-cloud`, a lower bound (spec test 4: 0 to 7 percent of the main model's tokens
+missed). Project state: parked until 2026-11-01 except the Station, with two park exceptions
+granted on 2026-10-12 (the audit fix and Cowork (Cloud)). Open: the "cloud sessions not
+measured" counter; `uicheck w1` misses its 1.5 s first-paint budget on this laptop. The text
+from here to the next heading describes 2026-10-03 and is kept as history.
+
+What was true at 2026-10-03: **`burnmon-dev.exe` is v0.4.0-alpha.10**
 (tag `v0.4.0-alpha.10` at `dd5125c`, 2026-10-02). `HEAD` and `origin/main` are `1b86eec`, two
 commits later: Station UI pass steps 1 (`2908574`) and 2 (`1b86eec`), no version bump (checked
 2026-10-03 with `git ls-remote origin`). **`burnmon.exe` and `burnmon-cli.exe` still report

@@ -106,7 +106,16 @@ between versions" (code.claude.com/docs/en/sessions).
 - Test 3 caveat 2, folder: session `1afdc570` had only a non-ZND folder connected, and nothing was
   delivered. Delivery needs a connected folder that contains the hook's `devicePath`. Session
   `551731f0` had `C:\ZND` connected and delivered into `C:\ZND\50_projects\burnmon`.
-- Test 4 (gap size): not yet run.
+- Test 4 (gap size), measured 2026-10-12 on cloud session `46e3aa09` (this build session), at seven turn
+  boundaries between 14:21 and 14:47 UTC. Reference: the runner's own cumulative `modelUsage` from its
+  `result` lines (an undocumented runner file in `/tmp`, used here only as a yardstick, never in the
+  product). Opus 5.5 (main model): the transcript matched exactly at the first three boundaries, then
+  missed 7.1, 5.9, 2.7 and 4.0 percent of tokens (at 14:47: 18,692,590 against 17,950,524), almost all of
+  it cache reads that arrive in steps of about 190,000 tokens. Inferred, not proven: the post-turn
+  memory pass, a second Opus call on the same cache that the transcript does not record. Haiku 5.5:
+  471,071 tokens, none of them in the transcript (side calls), costing 0.08 of 10.82 USD list price.
+  Verdict against the kill criteria: under the 10 percent line, so the numbers stay unlabelled as
+  estimates, with the lower-bound tooltip. Limit: one session, one day, seven boundaries.
 
 ## Done when
 
@@ -128,7 +137,12 @@ between versions" (code.claude.com/docs/en/sessions).
 ## Open questions
 
 - OPEN: default `cloud_drop_roots`, and which folder every cloud session connects (waits on Wilco).
-- OPEN: `remote-session-spaces.json` entry fields (waits on a key-name dump from the laptop).
+- Answered 2026-10-12 (masked key dump on Wilco's laptop): `remote-session-spaces.json` holds
+  `entries`, a list of 17, each `{sessionId: "session_" + 24 chars, spaceId, folders[], memoryEnabled}`.
+  No timestamps. Its name and fields say it maps cloud sessions to project spaces; whether a cloud
+  session outside any project is listed is not tested (inferred: not). The cloud runner's
+  `CLAUDE_CODE_REMOTE_SESSION_ID` is `cse_` plus the same 24 characters, so the two can be matched.
+- OPEN: build the "not measured" counter on this partial list, or close the item (waits on Wilco).
 - OPEN: kill thresholds above (waits on Wilco).
 
 ## Known limits

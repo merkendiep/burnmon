@@ -83,10 +83,13 @@ What it does not cover:
 
 - A session without that folder connected is not counted. Neither is a session started on
   the web or on your phone: those cannot reach your computer.
-- The numbers are a lower bound. The transcript misses some side calls: at one measured
-  turn, about 6 percent of the cache reads and every small Haiku call.
+- The numbers are a lower bound. The transcript misses some side calls. Measured on one
+  session at seven turn boundaries: 0 to 7 percent of the main model's tokens (mostly cache
+  reads), and every small Haiku call, which cost under 1 percent of that session.
 - The last request of each turn reaches BurnMon with your next message, or when the session
-  ends.
+  ends. Work done by subagents (agents Claude starts for research or parallel tasks) arrives
+  in one go when they finish, not while they run. BurnMon then shows it at the minute it was
+  actually spent, so the chart fills in afterwards.
 - The plugin reads Claude's transcript format, which Anthropic documents as internal and
   liable to change between versions. If BurnMon stops showing Cowork (Cloud) after a Claude
   update, that is the first place to look.
