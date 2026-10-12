@@ -82,6 +82,22 @@ Priority order lives here and only here.
     c. Design session tag (decided 2026-10-11): tag Claude Code sessions that publish a Design
        canvas (`project/canvas.json`, `*.dc.html` in Artifact tool input) as `design`, session
        level, agent stays `claude-code`. Spec: `2026-10-11_design-session-tag.md`.
+    d. Cloud Cowork sessions (decided 2026-10-12, roadmap row over README note): cloud-run Cowork
+       sessions leave no local transcript, so BurnMon undercounts Cowork. Plan: a BurnMon companion
+       plugin whose Stop hook writes a usage-only, deduplicated JSONL inside the cloud container and
+       delivers it to a connected laptop folder that BurnMon reads; until then show "N cloud Cowork
+       sessions, not measured" from `remote-session-spaces.json`. Gated on live tests (hook fires in
+       cloud, hook-driven delivery). Spec: `2026-10-12_cowork_cloud_bucket_spec.md`; test plugin:
+       `..\tools\burnmon-cloud-probe`. Build after the park (Wilco, 2026-10-12).
+       Research: `..\04_assets\2026-10-12_cloud_cowork_capture_research.md`.
+       Proof: `..\04_assets\2026-10-12_cloud_cowork_sessions_proof.md`.
+    e. Bug, found 2026-10-12: the live watcher counts a local Cowork session's `audit.jsonl` as a
+       second session (shown as `#udit`). `FindJSONL` skips `audit.jsonl`, `outputs` and `uploads`; the
+       watcher (`internal\watch\watch_windows.go`, `tail.go` `Track`) only checks the `.jsonl` suffix. Fix:
+       one shared path filter for both, a test first, then purge stored rows of session key `audit`.
+       Park exception (Wilco, 2026-10-12). Code done 2026-10-12, uncommitted: `scan.IsTranscriptPath`,
+       `Store.PurgeAuditSessions`, run on every Collect.
+       Proof: same file as row d.
 11. Decision 2026-12-19.
 
 Full plan with hypotheses, risks and assumptions: `2026-09-22_burnmon_plan.md`.

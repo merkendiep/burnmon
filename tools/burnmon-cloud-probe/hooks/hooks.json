@@ -1,0 +1,31 @@
+{
+  "description": "BurnMon cloud probe: Stop hook writes a usage-only extract to /mnt/user-data/outputs/.burnmon/cloud; a second Stop hook tries to copy the previous extract to the laptop without the model.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/extract.py"],
+            "timeout": 30
+          },
+          {
+            "type": "mcp_tool",
+            "server": "remote-devices",
+            "tool": "device_commit_files",
+            "input": {
+              "files": [
+                {
+                  "devicePath": "C:\\ZND\\50_projects\\burnmon\\.burnmon\\cloud\\probe-latest.jsonl",
+                  "stagedPath": "/mnt/user-data/outputs/.burnmon/cloud/latest.jsonl"
+                }
+              ]
+            },
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
