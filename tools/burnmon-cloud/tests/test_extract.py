@@ -81,6 +81,9 @@ class Base(unittest.TestCase):
         self.out = os.path.join(self.root, "outputs", ".burnmon", "cloud")
         self.mod = load()
         self.mod.OUT = self.out
+        # 1.1.3: extract starts a detached settle process; record it instead.
+        self.spawned = []
+        self.mod.spawn_settle = lambda digest: self.spawned.append(digest)
         self.transcript = os.path.join(self.root, "projects", "p", "sess-1.jsonl")
         self.subdir = os.path.join(self.root, "projects", "p", "sess-1", "subagents")
 
@@ -127,7 +130,7 @@ class ExtractTest(Base):
     def test_version_matches_manifest(self):
         with open(os.path.join(PLUGIN, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
             manifest = json.load(f)
-        self.assertEqual(manifest["version"], "1.1.2")
+        self.assertEqual(manifest["version"], "1.1.3")
         self.assertEqual(self.mod.__version__, manifest["version"])
 
     # --watch
@@ -355,6 +358,69 @@ class DiagTest(Base):
         self.run_hook(["--watch"], stdin="")
         self.assertTrue(os.path.exists(p + ".1"))
         self.assertEqual(len(self.diag()), 1)
+
+
+
+class SettleTest(Base):
+    """1.1.3: a copy that runs within about 5 s of a write delivers the
+    previous content (measured 2026-10-12: the outputs folder uploads in the
+    background, and the copy reads the uploaded file). So every write is
+    followed, about 10 s later, by an identical in-place rewrite whose copy
+    finds the new content uploaded."""
+
+    def test_extract_schedules_one_settle_with_the_body_digest(self):
+        import hashlib
+        self.basic_transcript()
+        self.run_hook([])
+        with open(self.latest(), "rb") as f:
+            digest = hashlib.sha256(f.read()).hexdigest()
+        self.assertEqual(self.spawned, [digest])
+
+    def test_no_settle_without_a_write(self):
+        self.run_hook([])  # no transcript
+        self.basic_transcript()
+        os.makedirs(self.out, exist_ok=True)
+        with open(self.latest(), "w", encoding="utf-8") as f:
+            f.write("OLD\n")
+        self.run_hook(["--throttle"], event="PostToolUse")
+        self.assertEqual(self.spawned, [])
+
+    def settle(self, digest):
+        self.mod.SETTLE_SECONDS = 0
+        self.run_hook(["--settle", digest], stdin="")
+
+    def test_settle_rewrites_unchanged_file_in_place(self):
+        import hashlib
+        self.basic_transcript()
+        self.run_hook([])
+        ino = os.stat(self.latest()).st_ino
+        old = time.time() - 30
+        os.utime(self.latest(), (old, old))
+        with open(self.latest(), "rb") as f:
+            body = f.read()
+        self.settle(hashlib.sha256(body).hexdigest())
+        st = os.stat(self.latest())
+        self.assertEqual(st.st_ino, ino)
+        self.assertGreater(st.st_mtime, old + 20, "the rewrite must touch the file")
+        with open(self.latest(), "rb") as f:
+            self.assertEqual(f.read(), body)
+        diag = [json.loads(l) for l in open(os.path.join(self.out, "diag.log"))]
+        self.assertEqual((diag[-1]["hook"], diag[-1]["result"]), ("settle", "rewrote"))
+
+    def test_settle_skips_when_a_newer_write_landed(self):
+        self.basic_transcript()
+        self.run_hook([])
+        old = time.time() - 30
+        os.utime(self.latest(), (old, old))
+        self.settle("0" * 64)
+        self.assertLess(os.stat(self.latest()).st_mtime, old + 1, "no rewrite")
+        diag = [json.loads(l) for l in open(os.path.join(self.out, "diag.log"))]
+        self.assertEqual((diag[-1]["hook"], diag[-1]["result"]), ("settle", "changed, skipped"))
+
+    def test_settle_does_nothing_outside_cloud(self):
+        self.mod.SETTLE_SECONDS = 0
+        self.run_hook(["--settle", "0" * 64], entrypoint="cli", stdin="")
+        self.assertFalse(os.path.exists(self.out))
 
 
 if __name__ == "__main__":

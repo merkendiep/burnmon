@@ -168,8 +168,22 @@ between versions" (code.claude.com/docs/en/sessions).
   it is never empty); the session file keeps temp-file-plus-rename. 24 extract tests pass on Python
   3.10 and 3.13 (new: the inode survives a rewrite and a shorter extract leaves no tail);
   `claude plugin validate --strict` passes.
-- Test 7 (plugin 1.1.2, live): not run yet. Same steps as test 6. Pass: every turn end lands within
-  about 10 s, and `diag.log` shows a FileChanged line after every write.
+- Test 7, 2026-10-12, cloud session `688bb225` (installed version not confirmed on the plugin page;
+  the pattern fits 1.1.2). Plain turn: request 23:43:47 local, on the laptop 23:43:54. Subagent turn:
+  three copies at 23:44:35 to 23:44:38 (FileChanged now fires on every write), but each carried the
+  previous content; the subagent rows landed at 23:45:09 with the next write's copy, and the turn's
+  last request did not land within the watch. Cause, measured from the build session with
+  `device_commit_files` itself: a copy 1 s after an in-place write delivered the old content, a copy
+  8 s after delivered the new. The outputs folder is an rclone mount with `vfs_cache_mode` full
+  (read from its config), so a write reaches the store the copy reads from only after a short
+  upload delay (rclone's default is 5 s: inferred, not read from this config).
+- Plugin 1.1.3: every extract write starts a detached `extract.py --settle <sha256>` that waits 10 s
+  and rewrites `latest.jsonl` in place with the same bytes if they are unchanged; that write's
+  FileChanged copy finds the new content uploaded. The hook still returns in about 50 ms (measured).
+  29 extract tests pass; `claude plugin validate --strict` passes.
+- Test 8 (plugin 1.1.3, live): not run yet. Same steps as test 6, watcher open for 60 s after each
+  turn. Pass: each turn's last request lands within about 20 s of the turn ending, and subagent rows
+  within about 20 s of the subagent finishing.
 
 ## Done when
 
@@ -204,7 +218,9 @@ between versions" (code.claude.com/docs/en/sessions).
 - Sessions with no connected folder, and sessions started on web or mobile, cannot deliver.
 - Plugin 1.0.0: the end of a turn arrives with the next message, or when the runner stops the
   idle session (about 4 minutes, test 5). Plugins 1.1.0 and 1.1.1: FileChanged fires once per
-  session start (test 6). Plugin 1.1.2 fixes that; live result pending (test 7).
+  session start (test 6). Plugin 1.1.2: fires on every write, but each copy carries the previous
+  upload (test 7). Plugin 1.1.3 adds a settle rewrite 10 s after each write; live result pending
+  (test 8).
 - The extract has no tool calls, so the Station cannot tell a cloud session that works from one
   that waits. BurnMon Dev shows it as Thinking until 3 minutes after its newest request, then
   Waiting on you (the Copilot in VS Code rule).

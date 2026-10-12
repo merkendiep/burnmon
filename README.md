@@ -77,7 +77,7 @@ Set it up once per computer:
        cd C:\path\to\burnmon\tools\burnmon-cloud
        .\build.ps1 -Target 'C:\path\to\burnmon\.burnmon\cloud\latest.jsonl'
 
-2. In Claude, open Customize > Plugins > Add and pick `dist\burnmon-cloud-1.1.2.plugin`.
+2. In Claude, open Customize > Plugins > Add and pick `dist\burnmon-cloud-1.1.3.plugin`.
 3. Connect your BurnMon folder, or any folder above it, to the cloud sessions you want
    counted.
 
@@ -94,8 +94,9 @@ What it does not cover:
   reads), and every small Haiku call, which cost under 1 percent of that session.
 - Work done while a turn runs reaches BurnMon about 10 seconds after it is written. That
   includes the work of a subagent (an agent Claude starts for research or parallel tasks),
-  which arrives when the subagent finishes. Plugin 1.1.2 delivers the end of a turn the same
-  way; that is not yet measured in a live session. Older versions deliver it with your next
+  which arrives when the subagent finishes. Plugin 1.1.3 delivers the end of a turn about 10
+  to 15 seconds after it ends; that is not yet measured in a live session. Older versions
+  deliver it with your next
   message, or about 4 minutes after the turn when the session goes idle. BurnMon shows each
   request at the minute it was actually spent, so the chart fills in afterwards.
 - The usage file has no tool calls, so BurnMon Dev's Station cannot tell a cloud session that

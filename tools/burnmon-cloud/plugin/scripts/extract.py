@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BurnMon cloud, extract hook (1.1.2).
+"""BurnMon cloud, extract hook (1.1.3).
 
 Runs inside a cloud Cowork session. Reads the hook input on stdin, then the
 session transcript and its subagent files, and writes a usage-only extract:
@@ -16,6 +16,11 @@ Modes:
                then exit; no extract. Prints nothing outside a cloud session.
   --fired      FileChanged (1.1.1 diagnostic): log when the hook fired and
                what latest.jsonl held at that moment; no extract.
+  --settle H   started by an extract, detached: after 10 s, rewrite
+               latest.jsonl with the same bytes if its SHA-256 is still H.
+               A copy within about 5 s of a write delivers the previous
+               upload of the outputs folder; this rewrite's copy finds the
+               new content uploaded (measured 2026-10-12).
 
 Outputs, under /mnt/user-data/outputs/.burnmon/cloud/:
   <session_id>.jsonl   the extract for this session
@@ -29,17 +34,20 @@ Outputs, under /mnt/user-data/outputs/.burnmon/cloud/:
 Never fails the turn: every error is logged and the script exits 0.
 """
 import glob
+import hashlib
 import json
 import os
+import subprocess
 import sys
 import time
 
-__version__ = "1.1.2"
+__version__ = "1.1.3"
 
 OUT = "/mnt/user-data/outputs/.burnmon/cloud"
 CLOUD_ENTRYPOINT = "remote_cowork"
 THROTTLE_SECONDS = 20
 DIAG_MAX_BYTES = 256 * 1024
+SETTLE_SECONDS = 10
 USAGE_KEYS = (
     "input_tokens",
     "output_tokens",
@@ -214,6 +222,32 @@ def extract(throttle):
     # grow, so a reader at worst sees the old tail for a moment.
     write_in_place(os.path.join(OUT, "latest.jsonl"), body)
     diag(event, mode, "wrote", sid=sid[:8], rows=len(out), newest=out[-1]["ts"])
+    spawn_settle(hashlib.sha256(body.encode("utf-8")).hexdigest())
+
+
+def spawn_settle(digest):
+    # Detached and silent, so the hook returns at once and the runner never
+    # waits on this process's output.
+    subprocess.Popen([sys.executable, os.path.abspath(__file__), "--settle", digest],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+
+
+def settle(digest):
+    if not in_cloud():
+        return
+    time.sleep(SETTLE_SECONDS)
+    p = os.path.join(OUT, "latest.jsonl")
+    try:
+        with open(p, "rb") as f:
+            data = f.read()
+    except OSError:
+        return
+    if hashlib.sha256(data).hexdigest() != digest:
+        diag("settle", "settle", "changed, skipped")
+        return
+    write_in_place(p, data.decode("utf-8"))
+    diag("settle", "settle", "rewrote", latest_rows=data.count(b"\n"))
 
 
 def write_in_place(path, body):
@@ -230,6 +264,9 @@ def write_in_place(path, body):
 
 def main(argv):
     flags = set(argv)
+    if argv[:1] == ["--settle"] and len(argv) == 2:
+        settle(argv[1])
+        return
     unknown = flags - {"--watch", "--throttle", "--fired"}
     if unknown:
         raise ValueError("unknown flag " + " ".join(sorted(unknown)))
