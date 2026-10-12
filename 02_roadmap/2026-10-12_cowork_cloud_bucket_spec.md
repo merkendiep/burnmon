@@ -59,6 +59,15 @@ between versions" (code.claude.com/docs/en/sessions).
   `mcp_tool` hook, so no model tokens are spent. Fallback if live test 3 fails: one model call per
   turn, budget 300 tokens.
 - The file is rewritten in full each turn, so a lost delivery heals on the next turn.
+- Plugin 1.1.0 (2026-10-12) moves the copy from "on Stop" to "after each write", to remove the
+  one-turn lag of 1.0.0. A SessionStart command hook (`extract.py --watch`) returns `watchPaths`
+  for `/mnt/user-data/outputs/.burnmon/cloud/latest.jsonl`; a FileChanged group (matcher
+  `latest.jsonl`) runs the `mcp_tool` copy after each write. The extract runs on Stop, on
+  SubagentStop and on PostToolUse (async, `--throttle`: skipped when `latest.jsonl` is under
+  20 s old), and writes `latest.jsonl` last, through a temp file and a rename. The 1.0.0 copies on
+  Stop, UserPromptSubmit and SessionEnd stay as the fallback. Each part is documented
+  (code.claude.com/docs/en/hooks, FileChanged and SessionStart); the combination in a cloud
+  session is not tested yet (test 5).
 
 ### Part B, BurnMon and BurnMon Dev
 
@@ -88,6 +97,14 @@ between versions" (code.claude.com/docs/en/sessions).
 3. Hook delivery: pass if `C:\ZND\50_projects\burnmon\.burnmon\cloud\probe-latest.jsonl` appears on
    the laptop without the model calling any tool. Needs that folder connected to the session.
 4. Gap size: compare the extract with the session's own totals at three turn boundaries.
+5. Copy after each write (plugin 1.1.0): install 1.1.0 over 1.0.0, start a new cloud session with
+   `C:\ZND` connected, run one plain turn, then one turn that starts a subagent. Pass: the laptop's
+   `latest.jsonl` holds each turn's rows within seconds of that turn ending, before the next
+   message, and the subagent's rows land when the subagent finishes, before its turn ends. The
+   subagent turn is the clean proof: every other copy runs at Stop or later, so subagent rows on
+   the laptop while the main turn still runs can only come from the FileChanged copy. Fail: rows
+   still arrive one turn late (FileChanged does not fire in cloud sessions); 1.0.0 behaviour
+   then remains.
 
 ## Live test results
 
@@ -116,6 +133,10 @@ between versions" (code.claude.com/docs/en/sessions).
   471,071 tokens, none of them in the transcript (side calls), costing 0.08 of 10.82 USD list price.
   Verdict against the kill criteria: under the 10 percent line, so the numbers stay unlabelled as
   estimates, with the lower-bound tooltip. Limit: one session, one day, seven boundaries.
+- Test 5 (copy after each write): not run yet. Plugin 1.1.0 built 2026-10-12 for target
+  `C:\ZND\50_projects\burnmon\.burnmon\cloud\latest.jsonl`; `claude plugin validate --strict`
+  passes on the unpacked package (2.1.296), and 15 extract tests pass on Python 3.10 and 3.13.
+  Measured on this build session's real transcript: 25 requests, 19 fields each, 15 ms.
 
 ## Done when
 
@@ -148,5 +169,6 @@ between versions" (code.claude.com/docs/en/sessions).
 ## Known limits
 
 - Sessions with no connected folder, and sessions started on web or mobile, cannot deliver.
-- The final turn arrives late or, if the session ends, only through a SessionEnd pass.
+- Plugin 1.0.0: the final turn arrives late or, if the session ends, only through a SessionEnd
+  pass. Plugin 1.1.0 copies after each write instead; until test 5 passes, assume 1.0.0 timing.
 - The probe's mcp_tool hook hard-codes the laptop path; the real plugin must take it from config.

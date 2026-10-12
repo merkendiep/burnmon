@@ -27,8 +27,16 @@ foreach ($t in $Target) {
     }
 }
 
-$extract = [ordered]@{ type = 'command'; command = 'python3'; args = @('${CLAUDE_PLUGIN_ROOT}/scripts/extract.py'); timeout = 30 }
-$extractAsync = [ordered]@{ type = 'command'; command = 'python3'; args = @('${CLAUDE_PLUGIN_ROOT}/scripts/extract.py'); async = $true; timeout = 30 }
+# Hooks (1.1.0). The extract writes latest.jsonl with a temp file plus rename.
+# SessionStart registers that file with the watcher (--watch), so every write
+# fires FileChanged, and FileChanged copies it to the computer: the main path,
+# no model tokens. Stop, UserPromptSubmit and SessionEnd copy too, as the 1.0
+# fallback for a watcher that does not fire. Hooks of one event run in
+# parallel, so the Stop copy carries the file of the turn before.
+$script = '${CLAUDE_PLUGIN_ROOT}/scripts/extract.py'
+$watch = [ordered]@{ type = 'command'; command = 'python3'; args = @($script, '--watch'); timeout = 10 }
+$extract = [ordered]@{ type = 'command'; command = 'python3'; args = @($script); timeout = 30 }
+$extractThrottled = [ordered]@{ type = 'command'; command = 'python3'; args = @($script, '--throttle'); async = $true; timeout = 30 }
 $copies = @(foreach ($t in $Target) {
     [ordered]@{
         type = 'mcp_tool'; server = 'remote-devices'; tool = 'device_commit_files'; timeout = 30
@@ -36,10 +44,13 @@ $copies = @(foreach ($t in $Target) {
     }
 })
 $hooks = [ordered]@{
-    description = 'BurnMon cloud: writes a usage-only extract of each cloud Cowork session and copies it to BurnMon''s drop folder. No prompts or content.'
+    description = 'BurnMon cloud: writes a usage-only extract of each cloud Cowork session and copies it to BurnMon''s drop folder after each write. No prompts or content.'
     hooks = [ordered]@{
-        PostToolUse      = @([ordered]@{ hooks = @($extractAsync) })
+        SessionStart     = @([ordered]@{ hooks = @($watch) })
+        PostToolUse      = @([ordered]@{ hooks = @($extractThrottled) })
+        SubagentStop     = @([ordered]@{ hooks = @($extract) })
         Stop             = @([ordered]@{ hooks = @($extract) + $copies })
+        FileChanged      = @([ordered]@{ matcher = 'latest.jsonl'; hooks = $copies })
         UserPromptSubmit = @([ordered]@{ hooks = $copies })
         SessionEnd       = @([ordered]@{ hooks = $copies })
     }
@@ -47,6 +58,8 @@ $hooks = [ordered]@{
 
 $stage = Join-Path ([IO.Path]::GetTempPath()) ("burnmon-cloud-" + [guid]::NewGuid())
 Copy-Item $src $stage -Recurse
+# Running the tests leaves Python bytecode next to extract.py; it does not ship.
+Get-ChildItem $stage -Recurse -Force -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force
 New-Item -ItemType Directory -Path (Join-Path $stage 'hooks') -Force | Out-Null
 $json = $hooks | ConvertTo-Json -Depth 12
 [IO.File]::WriteAllText((Join-Path $stage 'hooks\hooks.json'), $json, (New-Object Text.UTF8Encoding $false))
@@ -55,7 +68,8 @@ $dist = Join-Path $here 'dist'
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
 $zip = Join-Path $dist "burnmon-cloud-$version.zip"
 Remove-Item $zip -ErrorAction SilentlyContinue
-Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
+# -Force lists .claude-plugin too: a '*' wildcard skips dot folders outside Windows.
+Compress-Archive -Path (Get-ChildItem $stage -Force).FullName -DestinationPath $zip
 Copy-Item $zip (Join-Path $dist "burnmon-cloud-$version.plugin") -Force
 Remove-Item $stage -Recurse -Force
 Write-Host "Built $zip and burnmon-cloud-$version.plugin for: $($Target -join ', ')"

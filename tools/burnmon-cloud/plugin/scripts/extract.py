@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
-"""BurnMon cloud, extract hook (1.0.0).
+"""BurnMon cloud, extract hook (1.1.0).
 
-Runs inside a cloud Cowork session on Stop and after every tool call. Reads
-the hook input on stdin, then the session transcript and its subagent files,
-and writes a usage-only extract: one JSON line per model request, the last
-row per (requestId, message.id), whitelisted fields only. No message text,
-tool input, paths, cwd or branch is ever written.
+Runs inside a cloud Cowork session. Reads the hook input on stdin, then the
+session transcript and its subagent files, and writes a usage-only extract:
+one JSON line per model request, the last row per (requestId, message.id),
+whitelisted fields only. No message text, tool input, paths, cwd or branch is
+ever written.
+
+Modes:
+  (no flag)    extract now (Stop, SubagentStop)
+  --throttle   extract, unless latest.jsonl was written less than 20 s ago
+               (PostToolUse, which fires after every tool call)
+  --watch      SessionStart: print the watchPaths output that makes the
+               plugin's FileChanged hook fire on every write of latest.jsonl,
+               then exit; no extract. Prints nothing outside a cloud session.
 
 Outputs, under /mnt/user-data/outputs/.burnmon/cloud/:
   <session_id>.jsonl   the extract for this session
@@ -22,8 +30,11 @@ import os
 import sys
 import time
 
+__version__ = "1.1.0"
+
 OUT = "/mnt/user-data/outputs/.burnmon/cloud"
 CLOUD_ENTRYPOINT = "remote_cowork"
+THROTTLE_SECONDS = 20
 USAGE_KEYS = (
     "input_tokens",
     "output_tokens",
@@ -81,7 +92,38 @@ def read_rows(path, agent):
     return rows
 
 
-def main():
+def main_transcript(tpath):
+    # The docs give the main transcript as transcript_path, also on
+    # SubagentStop and on tool calls inside a subagent. If a subagent file
+    # (<session>/subagents/<agent>.jsonl) ever arrives instead, go up to the
+    # session's own file, so latest.jsonl never shrinks to one subagent.
+    sub_dir = os.path.dirname(tpath)
+    if os.path.basename(sub_dir) == "subagents":
+        main = os.path.dirname(sub_dir) + ".jsonl"
+        if os.path.isfile(main):
+            return main
+    return tpath
+
+
+def watch():
+    if os.environ.get("CLAUDE_CODE_ENTRYPOINT") != CLOUD_ENTRYPOINT:
+        return
+    out = {"hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "watchPaths": [os.path.join(OUT, "latest.jsonl")],
+    }}
+    sys.stdout.write(json.dumps(out, separators=(",", ":")) + "\n")
+
+
+def recently_written():
+    try:
+        age = time.time() - os.path.getmtime(os.path.join(OUT, "latest.jsonl"))
+    except OSError:
+        return False
+    return age < THROTTLE_SECONDS
+
+
+def extract():
     if os.environ.get("CLAUDE_CODE_ENTRYPOINT", CLOUD_ENTRYPOINT) != CLOUD_ENTRYPOINT:
         return
     hook = json.load(sys.stdin)
@@ -89,6 +131,7 @@ def main():
     sid = hook.get("session_id") or "unknown"
     if not os.path.isfile(tpath):
         return
+    tpath = main_transcript(tpath)
     rows = read_rows(tpath, "main")
     for p in glob.glob(os.path.join(os.path.splitext(tpath)[0], "subagents", "*.jsonl")):
         rows.update(read_rows(p, os.path.splitext(os.path.basename(p))[0]))
@@ -101,6 +144,9 @@ def main():
         return
     body = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in out)
     os.makedirs(OUT, exist_ok=True)
+    # latest.jsonl last: its write is what fires the FileChanged copy, so the
+    # session file is complete by then. Temp file plus rename, so the watcher
+    # sees one finished write and never a half file.
     for name in (sid + ".jsonl", "latest.jsonl"):
         tmp = os.path.join(OUT, name + "." + str(os.getpid()) + ".tmp")
         with open(tmp, "w", encoding="utf-8") as f:
@@ -108,14 +154,32 @@ def main():
         os.replace(tmp, os.path.join(OUT, name))
 
 
-if __name__ == "__main__":
+def main(argv):
+    flags = set(argv)
+    unknown = flags - {"--watch", "--throttle"}
+    if unknown:
+        raise ValueError("unknown flag " + " ".join(sorted(unknown)))
+    if "--watch" in flags:
+        watch()
+        return
+    if "--throttle" in flags and recently_written():
+        return
+    extract()
+
+
+def run(argv):
     try:
-        main()
+        main(argv)
     except Exception as e:  # never break the user's turn
         try:
             os.makedirs(OUT, exist_ok=True)
             with open(os.path.join(OUT, "errors.log"), "a", encoding="utf-8") as f:
-                f.write(json.dumps({"at": time.time(), "error": repr(e)[:300]}) + "\n")
+                f.write(json.dumps({"at": time.time(), "v": __version__,
+                                    "error": repr(e)[:300]}) + "\n")
         except Exception:
             pass
+
+
+if __name__ == "__main__":
+    run(sys.argv[1:])
     sys.exit(0)

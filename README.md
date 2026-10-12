@@ -60,12 +60,14 @@ your Cowork number comes out too low without any warning. On one Team account on
 two new sessions in a row ran in the cloud even with "Only on this computer" switched on.
 
 The fix is an optional Claude plugin, `burnmon-cloud`, in `tools\burnmon-cloud`. Inside each
-cloud session it reads that session's own transcript after every turn and keeps only the
-usage numbers: time, session and request ids, model and token counts. No prompts, no
+cloud session it reads that session's own transcript at the end of each turn, when a
+subagent finishes, and at most every 20 seconds while Claude works with tools. It keeps only
+the usage numbers: time, session and request ids, model and token counts. No prompts, no
 answers, no tool input, no paths. The Claude desktop app then copies that file into
 `.burnmon\cloud` next to `burnmon.exe`, and BurnMon shows it as its own row, Cowork (Cloud).
-BurnMon itself still makes no network call. The copy goes through the Claude app, into a
-folder you connected to the session.
+The copy is a plugin hook, so it costs no model tokens. BurnMon itself still makes no
+network call. The copy goes through the Claude app, into a folder you connected to the
+session.
 
 Set it up once per computer:
 
@@ -75,7 +77,7 @@ Set it up once per computer:
        cd C:\path\to\burnmon\tools\burnmon-cloud
        .\build.ps1 -Target 'C:\path\to\burnmon\.burnmon\cloud\latest.jsonl'
 
-2. In Claude, open Customize > Plugins > Add and pick `dist\burnmon-cloud-1.0.0.plugin`.
+2. In Claude, open Customize > Plugins > Add and pick `dist\burnmon-cloud-1.1.0.plugin`.
 3. Connect your BurnMon folder, or any folder above it, to the cloud sessions you want
    counted.
 
@@ -86,10 +88,13 @@ What it does not cover:
 - The numbers are a lower bound. The transcript misses some side calls. Measured on one
   session at seven turn boundaries: 0 to 7 percent of the main model's tokens (mostly cache
   reads), and every small Haiku call, which cost under 1 percent of that session.
-- The last request of each turn reaches BurnMon with your next message, or when the session
-  ends. Work done by subagents (agents Claude starts for research or parallel tasks) arrives
-  in one go when they finish, not while they run. BurnMon then shows it at the minute it was
-  actually spent, so the chart fills in afterwards.
+- Each turn should reach BurnMon a few seconds after it ends, and the work of a subagent
+  (an agent Claude starts for research or parallel tasks) when that subagent finishes.
+  BurnMon shows it at the minute it was actually spent, so the chart fills in afterwards.
+  This uses a file watcher inside the cloud session. The watcher is documented, but plugin
+  1.1.0 has not yet been confirmed in a live cloud session. If the watcher does not fire,
+  the plugin still copies at your next message and when the session ends, so the last
+  request of a turn arrives one turn late, as in 1.0.0.
 - The plugin reads Claude's transcript format, which Anthropic documents as internal and
   liable to change between versions. If BurnMon stops showing Cowork (Cloud) after a Claude
   update, that is the first place to look.

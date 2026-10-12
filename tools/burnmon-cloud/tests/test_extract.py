@@ -1,0 +1,249 @@
+"""Tests for the BurnMon cloud extract hook (plugin/scripts/extract.py).
+
+Runs on any computer with Python 3, no cloud session needed:
+
+    cd tools/burnmon-cloud
+    python3 -m unittest discover -s tests -v
+
+Each test points the script's output folder at a temp folder and sets
+CLAUDE_CODE_ENTRYPOINT itself, so it covers both the cloud environment
+(remote_cowork) and a local one.
+"""
+import importlib.util
+import io
+import json
+import os
+import sys
+import tempfile
+import time
+import unittest
+from contextlib import redirect_stdout
+from unittest import mock
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PLUGIN = os.path.join(os.path.dirname(HERE), "plugin")
+SCRIPT = os.path.join(PLUGIN, "scripts", "extract.py")
+
+WHITELIST = {
+    "v", "source", "ts", "session_id", "request_id", "message_id", "model",
+    "agent", "is_sidechain", "entrypoint", "service_tier", "speed",
+    "cache_5m", "cache_1h", "thinking_tokens", "input_tokens",
+    "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens",
+}
+SECRETS = ("SECRET_TEXT", "SECRET_TOOL", "/secret/cwd", "secret-branch", "SECRET_PROMPT")
+
+
+def load():
+    sys.dont_write_bytecode = True  # keep plugin/scripts free of __pycache__
+    spec = importlib.util.spec_from_file_location("extract_under_test", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def assistant(req, msg, out_tokens, ts, entrypoint="remote_cowork", sidechain=False):
+    return {
+        "type": "assistant", "timestamp": ts, "sessionId": "sess-1",
+        "requestId": req, "isSidechain": sidechain, "entrypoint": entrypoint,
+        "cwd": "/secret/cwd", "gitBranch": "secret-branch",
+        "message": {
+            "id": msg, "model": "claude-opus-5-5", "role": "assistant",
+            "content": [{"type": "text", "text": "SECRET_TEXT"},
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "SECRET_TOOL"}}],
+            "usage": {
+                "input_tokens": 10, "output_tokens": out_tokens,
+                "cache_creation_input_tokens": 100, "cache_read_input_tokens": 1000,
+                "cache_creation": {"ephemeral_5m_input_tokens": 40, "ephemeral_1h_input_tokens": 60},
+                "output_tokens_details": {"thinking_tokens": 3},
+                "service_tier": "standard", "speed": "standard",
+            },
+        },
+    }
+
+
+def user(text, entrypoint="remote_cowork"):
+    return {"type": "user", "timestamp": "2026-10-12T10:00:00Z", "sessionId": "sess-1",
+            "entrypoint": entrypoint, "cwd": "/secret/cwd",
+            "message": {"role": "user", "content": text}}
+
+
+def write_jsonl(path, rows):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+
+
+class ExtractTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = self.tmp.name
+        self.out = os.path.join(self.root, "outputs", ".burnmon", "cloud")
+        self.mod = load()
+        self.mod.OUT = self.out
+        self.transcript = os.path.join(self.root, "projects", "p", "sess-1.jsonl")
+        self.subdir = os.path.join(self.root, "projects", "p", "sess-1", "subagents")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_hook(self, argv, entrypoint="remote_cowork", stdin=None, event="Stop"):
+        if stdin is None:
+            stdin = json.dumps({"session_id": "sess-1", "transcript_path": self.transcript,
+                                "hook_event_name": event})
+        env = dict(os.environ)
+        env.pop("CLAUDE_CODE_ENTRYPOINT", None)
+        if entrypoint is not None:
+            env["CLAUDE_CODE_ENTRYPOINT"] = entrypoint
+        buf = io.StringIO()
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(sys, "stdin", io.StringIO(stdin)), redirect_stdout(buf):
+            self.mod.run(argv)
+        return buf.getvalue()
+
+    def latest(self):
+        return os.path.join(self.out, "latest.jsonl")
+
+    def read_latest(self):
+        with open(self.latest(), encoding="utf-8") as f:
+            return [json.loads(l) for l in f if l.strip()]
+
+    def errors(self):
+        p = os.path.join(self.out, "errors.log")
+        return open(p, encoding="utf-8").read() if os.path.exists(p) else ""
+
+    def basic_transcript(self, entrypoint="remote_cowork"):
+        write_jsonl(self.transcript, [
+            user("SECRET_PROMPT", entrypoint),
+            assistant("req_1", "msg_1", 8, "2026-10-12T10:00:01Z", entrypoint),
+            assistant("req_1", "msg_1", 148, "2026-10-12T10:00:02Z", entrypoint),
+            assistant("req_2", "msg_2", 20, "2026-10-12T10:00:05Z", entrypoint),
+        ])
+
+    # version
+
+    def test_version_matches_manifest(self):
+        with open(os.path.join(PLUGIN, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
+            manifest = json.load(f)
+        self.assertEqual(manifest["version"], "1.1.0")
+        self.assertEqual(self.mod.__version__, manifest["version"])
+
+    # --watch
+
+    def test_watch_in_cloud_prints_watch_paths(self):
+        out = self.run_hook(["--watch"], stdin="")
+        self.assertEqual(json.loads(out), {"hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "watchPaths": [os.path.join(self.out, "latest.jsonl")]}})
+        self.assertFalse(os.path.exists(self.latest()), "--watch must not create latest.jsonl")
+        self.assertEqual(self.errors(), "")
+
+    def test_watch_path_is_the_staged_path_in_production(self):
+        self.assertEqual(os.path.join(load().OUT, "latest.jsonl"),
+                         "/mnt/user-data/outputs/.burnmon/cloud/latest.jsonl")
+
+    def test_watch_outside_cloud_prints_nothing(self):
+        self.assertEqual(self.run_hook(["--watch"], entrypoint="cli", stdin=""), "")
+        self.assertEqual(self.run_hook(["--watch"], entrypoint="local-agent", stdin=""), "")
+        self.assertEqual(self.run_hook(["--watch"], entrypoint=None, stdin=""), "")
+
+    def test_watch_does_not_extract(self):
+        self.basic_transcript()
+        self.run_hook(["--watch"])
+        self.assertFalse(os.path.exists(self.latest()))
+
+    # plain extract
+
+    def test_extract_writes_whitelisted_last_rows(self):
+        self.basic_transcript()
+        self.assertEqual(self.run_hook([]), "")
+        rows = self.read_latest()
+        self.assertEqual([r["request_id"] for r in rows], ["req_1", "req_2"])
+        self.assertEqual(rows[0]["output_tokens"], 148, "last row of a streamed request wins")
+        for r in rows:
+            self.assertEqual(set(r), WHITELIST)
+            self.assertEqual(r["agent"], "main")
+            self.assertEqual(r["cache_5m"], 40)
+            self.assertEqual(r["thinking_tokens"], 3)
+        with open(self.latest(), encoding="utf-8") as f:
+            body = f.read()
+        for s in SECRETS:
+            self.assertNotIn(s, body)
+        with open(os.path.join(self.out, "sess-1.jsonl"), encoding="utf-8") as f:
+            self.assertEqual(f.read(), body)
+        self.assertEqual([n for n in os.listdir(self.out) if n.endswith(".tmp")], [])
+
+    def test_extract_skips_local_rows(self):
+        self.basic_transcript(entrypoint="cli")
+        self.run_hook([], entrypoint="cli")
+        self.assertFalse(os.path.exists(self.latest()))
+
+    def test_extract_includes_subagents(self):
+        self.basic_transcript()
+        write_jsonl(os.path.join(self.subdir, "agent-abc.jsonl"), [
+            assistant("req_9", "msg_9", 30, "2026-10-12T10:00:03Z", sidechain=True)])
+        self.run_hook([], event="SubagentStop")
+        rows = {r["request_id"]: r for r in self.read_latest()}
+        self.assertEqual(rows["req_9"]["agent"], "agent-abc")
+        self.assertTrue(rows["req_9"]["is_sidechain"])
+        self.assertIn("req_1", rows)
+
+    def test_extract_from_subagent_transcript_path_still_covers_the_session(self):
+        # Docs: transcript_path is the main transcript on SubagentStop. Guard
+        # anyway: if a hook ever hands the subagent file, the extract must
+        # not shrink latest.jsonl to that one subagent.
+        self.basic_transcript()
+        sub = os.path.join(self.subdir, "agent-abc.jsonl")
+        write_jsonl(sub, [assistant("req_9", "msg_9", 30, "2026-10-12T10:00:03Z", sidechain=True)])
+        stdin = json.dumps({"session_id": "sess-1", "transcript_path": sub})
+        self.run_hook([], stdin=stdin)
+        ids = sorted(r["request_id"] for r in self.read_latest())
+        self.assertEqual(ids, ["req_1", "req_2", "req_9"])
+
+    def test_bad_input_never_raises(self):
+        self.run_hook([], stdin="not json")
+        self.assertIn("error", self.errors())
+        self.assertFalse(os.path.exists(self.latest()))
+
+    def test_unknown_flag_never_raises(self):
+        self.basic_transcript()
+        self.run_hook(["--bogus"])
+        self.assertIn("error", self.errors())
+
+    # --throttle
+
+    def test_throttle_skips_when_written_recently(self):
+        self.basic_transcript()
+        os.makedirs(self.out)
+        with open(self.latest(), "w", encoding="utf-8") as f:
+            f.write("OLD\n")
+        self.run_hook(["--throttle"], event="PostToolUse")
+        with open(self.latest(), encoding="utf-8") as f:
+            self.assertEqual(f.read(), "OLD\n")
+
+    def test_throttle_extracts_when_older_than_20s(self):
+        self.basic_transcript()
+        os.makedirs(self.out)
+        with open(self.latest(), "w", encoding="utf-8") as f:
+            f.write("OLD\n")
+        old = time.time() - 21
+        os.utime(self.latest(), (old, old))
+        self.run_hook(["--throttle"], event="PostToolUse")
+        self.assertEqual(len(self.read_latest()), 2)
+
+    def test_throttle_extracts_when_no_file_yet(self):
+        self.basic_transcript()
+        self.run_hook(["--throttle"], event="PostToolUse")
+        self.assertEqual(len(self.read_latest()), 2)
+
+    def test_throttle_does_not_apply_without_flag(self):
+        self.basic_transcript()
+        os.makedirs(self.out)
+        with open(self.latest(), "w", encoding="utf-8") as f:
+            f.write("OLD\n")
+        self.run_hook([])
+        self.assertEqual(len(self.read_latest()), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()
