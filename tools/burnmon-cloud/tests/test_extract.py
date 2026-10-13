@@ -130,7 +130,7 @@ class ExtractTest(Base):
     def test_version_matches_manifest(self):
         with open(os.path.join(PLUGIN, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
             manifest = json.load(f)
-        self.assertEqual(manifest["version"], "1.1.3")
+        self.assertEqual(manifest["version"], "1.1.4")
         self.assertEqual(self.mod.__version__, manifest["version"])
 
     # --watch
@@ -139,13 +139,13 @@ class ExtractTest(Base):
         out = self.run_hook(["--watch"], stdin="")
         self.assertEqual(json.loads(out), {"hookSpecificOutput": {
             "hookEventName": "SessionStart",
-            "watchPaths": [os.path.join(self.out, "latest.jsonl")]}})
+            "watchPaths": [self.out]}})
         self.assertFalse(os.path.exists(self.latest()), "--watch must not create latest.jsonl")
         self.assertEqual(self.errors(), "")
 
-    def test_watch_path_is_the_staged_path_in_production(self):
-        self.assertEqual(os.path.join(load().OUT, "latest.jsonl"),
-                         "/mnt/user-data/outputs/.burnmon/cloud/latest.jsonl")
+    def test_watch_path_is_the_staged_folder_in_production(self):
+        # 1.1.4: the folder, not the file (the file watch went deaf after a few events).
+        self.assertEqual(load().OUT, "/mnt/user-data/outputs/.burnmon/cloud")
 
     def test_watch_outside_cloud_prints_nothing(self):
         self.assertEqual(self.run_hook(["--watch"], entrypoint="cli", stdin=""), "")

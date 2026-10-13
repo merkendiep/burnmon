@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BurnMon cloud, extract hook (1.1.3).
+"""BurnMon cloud, extract hook (1.1.4).
 
 Runs inside a cloud Cowork session. Reads the hook input on stdin, then the
 session transcript and its subagent files, and writes a usage-only extract:
@@ -14,6 +14,11 @@ Modes:
   --watch      SessionStart: print the watchPaths output that makes the
                plugin's FileChanged hook fire on every write of latest.jsonl,
                then exit; no extract. Prints nothing outside a cloud session.
+               1.1.4 watches the drop FOLDER, not the file: the outputs folder
+               is an rclone mount whose file stat flickers after a write, and
+               a watcher bound to the file itself went deaf after 2 to 4
+               events (measured 2026-10-13). The hook matcher still limits
+               the copy to latest.jsonl.
   --fired      FileChanged (1.1.1 diagnostic): log when the hook fired and
                what latest.jsonl held at that moment; no extract.
   --settle H   started by an extract, detached: after 10 s, rewrite
@@ -41,7 +46,7 @@ import subprocess
 import sys
 import time
 
-__version__ = "1.1.3"
+__version__ = "1.1.4"
 
 OUT = "/mnt/user-data/outputs/.burnmon/cloud"
 CLOUD_ENTRYPOINT = "remote_cowork"
@@ -156,7 +161,7 @@ def watch():
         return
     out = {"hookSpecificOutput": {
         "hookEventName": "SessionStart",
-        "watchPaths": [os.path.join(OUT, "latest.jsonl")],
+        "watchPaths": [OUT],
     }}
     sys.stdout.write(json.dumps(out, separators=(",", ":")) + "\n")
     diag("SessionStart", "watch", "watch registered")

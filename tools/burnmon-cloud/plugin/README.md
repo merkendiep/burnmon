@@ -24,20 +24,25 @@ open an issue at https://github.com/wilcodetree/burnmon/issues.
 
 ## Use it in Cowork only
 
-This plugin is for Cowork cloud sessions. Its copy hook calls the `remote-devices` tool
+This plugin is for Cowork cloud sessions. Its copy hooks call the `remote-devices` tool
 server, which exists only in a cloud session linked to your computer. Claude Code on your
 computer has no such server, and a plugin you install or sync in claude.ai can also load
-there. Versions before 3.4.0 then showed this at every stop:
+there. A hook that calls a missing server cannot be switched off from inside the plugin,
+so Claude Code shows this at every stop, prompt and exit:
 
     Stop hook error: MCP server 'remote-devices' not connected
 
-From 3.4.0 the copy runs only when the cloud session's file watcher fires, which never
-happens in Claude Code, so the error is gone. On an older version, turn the plugin off for
-Claude Code:
+The line is a non-blocking error. Nothing else breaks, and Claude Code gains nothing from
+the plugin. Turn the plugin off for Claude Code:
 
     claude plugin disable burnmon-cloud@synced
 
 If you installed it from the marketplace instead, use `burnmon-cloud@znd-skills-public`.
+
+Why the hooks stay: the file watcher that should trigger every copy stops firing a few
+seconds into a cloud session (measured: 6 events for 90 writes). Version 3.4.0 dropped the
+extra copies and lost data, so 3.4.1 has them back. They go again when the watcher is proven
+reliable with `tools/burnmon-cloud/coverage.py` in the BurnMon repository.
 
 ## What it does not cover
 

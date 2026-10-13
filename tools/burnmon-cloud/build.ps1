@@ -48,18 +48,23 @@ foreach ($t in $Target) {
 
 # Hooks (1.1.0 and up). The extract rewrites latest.jsonl in place (1.1.2: a rename
 # made the watcher go deaf after one event).
-# SessionStart registers that file with the watcher (--watch), so every write
-# fires FileChanged, and FileChanged copies it to the computer: the only copy
-# path, no model tokens. Stop, UserPromptSubmit and SessionEnd no longer copy
-# (3.4.0): an mcp_tool hook whose server is missing raises a visible error, and
-# Claude Code on the computer has no remote-devices server, so those three
-# showed "MCP server 'remote-devices' not connected" at every stop there.
-# FileChanged never fires outside a cloud session, because --watch exits early
-# there. Hooks of one event run in parallel. 1.1.1 diagnostic: every extract run
-# logs to diag.log, FileChanged also runs extract.py --fired next to the copy,
-# which logs the moment the copy started, and copies diag.log next to
-# latest.jsonl (BurnMon reads only .jsonl there). Each copy is its own hook
-# entry, so a missing diag.log can never stop the latest.jsonl copy.
+# SessionStart registers the drop folder with the watcher (--watch), so every write
+# of latest.jsonl fires FileChanged, and FileChanged copies it to the computer:
+# the main path, no model tokens. Stop, UserPromptSubmit and SessionEnd copy too,
+# as the fallback for a watcher that does not fire. 3.4.0 dropped them and lost
+# data: measured 2026-10-13 in one cloud session, FileChanged fired 6 times, the
+# last one 53 s after SessionStart, while latest.jsonl was written 39 more times.
+# 3.4.1 restores them. Their cost: Claude Code on the computer has no
+# remote-devices server, so a plugin synced from claude.ai shows "MCP server
+# 'remote-devices' not connected" there (see the README). The fallbacks can go
+# again once coverage.py shows the watcher fires on every write of a long session.
+# Hooks of one event run in parallel, so the Stop copy carries the file of the
+# turn before.
+# 1.1.1 diagnostic: every extract run logs to diag.log, and FileChanged also
+# runs extract.py --fired next to the copy, which logs the moment the copy
+# started. UserPromptSubmit copies diag.log next to latest.jsonl (BurnMon
+# reads only .jsonl there). Each copy is its own hook entry, so a missing
+# diag.log can never stop the latest.jsonl copy.
 $script = '${CLAUDE_PLUGIN_ROOT}/scripts/extract.py'
 $watch = [ordered]@{ type = 'command'; command = 'python3'; args = @($script, '--watch'); timeout = 10 }
 $fired = [ordered]@{ type = 'command'; command = 'python3'; args = @($script, '--fired'); timeout = 10 }
@@ -83,8 +88,10 @@ $hooks = [ordered]@{
         SessionStart     = @([ordered]@{ hooks = @($watch) })
         PostToolUse      = @([ordered]@{ hooks = @($extractThrottled) })
         SubagentStop     = @([ordered]@{ hooks = @($extract) })
-        Stop             = @([ordered]@{ hooks = @($extract) })
-        FileChanged      = @([ordered]@{ matcher = 'latest.jsonl'; hooks = @($fired) + $copies + $diagCopies })
+        Stop             = @([ordered]@{ hooks = @($extract) + $copies })
+        FileChanged      = @([ordered]@{ matcher = 'latest.jsonl'; hooks = @($fired) + $copies })
+        UserPromptSubmit = @([ordered]@{ hooks = $copies + $diagCopies })
+        SessionEnd       = @([ordered]@{ hooks = $copies })
     }
 }
 
