@@ -22,6 +22,23 @@ open an issue at https://github.com/wilcodetree/burnmon/issues.
 3. Connect the folder `~/.burnmon` to the cloud sessions you want counted. In a Cowork
    project, add it once to the project's folders.
 
+## Use it in Cowork only
+
+This plugin is for Cowork cloud sessions. Its copy hook calls the `remote-devices` tool
+server, which exists only in a cloud session linked to your computer. Claude Code on your
+computer has no such server, and a plugin you install or sync in claude.ai can also load
+there. Versions before 3.4.0 then showed this at every stop:
+
+    Stop hook error: MCP server 'remote-devices' not connected
+
+From 3.4.0 the copy runs only when the cloud session's file watcher fires, which never
+happens in Claude Code, so the error is gone. On an older version, turn the plugin off for
+Claude Code:
+
+    claude plugin disable burnmon-cloud@synced
+
+If you installed it from the marketplace instead, use `burnmon-cloud@znd-skills-public`.
+
 ## What it does not cover
 
 - A session without `~/.burnmon` connected is not counted. Neither is a session started on
