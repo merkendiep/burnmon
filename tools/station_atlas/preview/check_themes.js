@@ -161,5 +161,26 @@ ok(Object.keys(HOLD).every(function(k){ return HO && HO[k] > HOLD[k]; }), 'the p
 var rug = src.slice(src.indexOf('blueprint rug under the table'), src.indexOf('// outer hull'));
 ok(rug.length > 50 && rug.indexOf('lineTo(X0 + g + 5.5') < 0, 'plan view: the L marks along the top of the blueprint rug are gone');
 
+// ---- the rover talks (2026-10-13): No.far greets on hover or click, and asks for things now and then
+var RT = B.ROVER_TALK || {};
+ok(RT.hello === 'Hey I am No.far, what can I do to help you?', 'the rover greets with "Hey I am No.far, what can I do to help you?"');
+ok(JSON.stringify(RT.quips) === '["?","Help","Please clean"]', 'the rover quips are "?", "Help" and "Please clean"');
+var says = B.roverSays || function(){ return undefined; };
+ok(says({hover: true, helloUntil: 0}, 5000, 0) === RT.hello, 'hovering the rover shows the greeting');
+ok(says({hover: false, helloUntil: 9000}, 5000, 0) === RT.hello && says({hover: false, helloUntil: 4000}, 5000, 0) !== RT.hello, 'a click shows the greeting until helloUntil, then it goes');
+var seen = {}, shown = 0, steps = 0, runs = [], run = 0, sameAgain = true, T0 = 1760000000000;
+for(var tq = T0; tq < T0 + 30 * 60000; tq += 100){
+  var q = says({hover: false, helloUntil: 0}, tq, 0); steps++;
+  if(q !== says({hover: false, helloUntil: 0}, tq, 0)) sameAgain = false;
+  if(q){ seen[q] = 1; shown++; run++; } else if(run){ runs.push(run); run = 0; }
+}
+var frac = shown / steps;
+ok(sameAgain && RT.quips && RT.quips.every(function(w){ return seen[w]; }), 'over 30 minutes every quip appears, and the same moment always gives the same quip');
+ok(frac > 0.04 && frac < 0.3, 'a quip shows only sometimes (' + Math.round(frac * 100) + ' percent of the time, wants 4 to 30)');
+ok(runs.length > 0 && Math.min.apply(null, runs) >= 30, 'each quip stays up at least 3 s, long enough to read');
+ok(typeof B.inBox === 'function' && B.inBox([10, 10, 20, 20], 15, 15, 0) && B.inBox([10, 10, 20, 20], 33, 15, 4) && !B.inBox([10, 10, 20, 20], 40, 15, 4) && !B.inBox(null, 15, 15, 0), 'inBox hits inside the box plus its pad, misses outside and without a box');
+ok(/roverHit\(/.test(src) && /helloUntil\s*=\s*now/.test(src.slice(src.indexOf('function onUp('), src.indexOf('function onWheel('))), 'a click on the rover (roverHit) sets its greeting time in onUp');
+ok(/drawRoverTalk\(/.test(src.slice(src.indexOf('function draw('), src.indexOf('function drawTop('))) && /drawRoverTalk\(/.test(src.slice(src.indexOf('function drawTop('), src.indexOf('function wallFn('))), 'the speech bubble is drawn in both views (P and O)');
+
 console.log(fails ? fails + ' failure(s)' : 'all checks passed' + (warns ? ' (' + warns + ' warning(s))' : ''));
 process.exit(fails ? 1 : 0);

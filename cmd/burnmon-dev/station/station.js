@@ -264,6 +264,21 @@
   // Plan table hologram opacity (idle, someone planning), iso cone and cards and the plan view line.
   var HOLO = {coneIdle: 0.3, coneBusy: 0.6, cardIdle: 0.7, cardBusy: 1, planIdle: 0.85, planBusy: 1};
   var ROVER_STARTS = [{x: RW + 0.5, y: RW + 0.5, next: 1500}];
+  // The rover is called No.far. Hover or click it and it greets you; now and
+  // then it asks for something in a speech bubble. period and show are ms:
+  // one quip at a random moment in every period, up for show ms.
+  var ROVER_TALK = {hello: 'Hey I am No.far, what can I do to help you?', quips: ['?', 'Help', 'Please clean'],
+    period: 40000, show: 4000, helloMs: 6000};
+  // What rover idx says at now (ms): the greeting while hovered or until
+  // helloUntil, else a quip in its slot of the period, else null. The same
+  // moment always gives the same answer, so frames agree with each other.
+  function roverSays(st, now, idx){
+    if(st.hover || st.helloUntil > now) return ROVER_TALK.hello;
+    var T = ROVER_TALK, n = Math.floor(now / T.period), r = rng(n * 7919 + idx * 97 + 13);
+    var at = r() * (T.period - T.show), pick = r(), off = now - n * T.period;
+    return off >= at && off < at + T.show ? T.quips[Math.floor(pick * T.quips.length)] : null;
+  }
+  function inBox(b, mx, my, pad){ pad = pad || 0; return !!b && mx >= b[0] - pad && mx <= b[0] + b[2] + pad && my >= b[1] - pad && my <= b[1] + b[3] + pad; }
 
   var VENDOR_SPRITE = {
     'claude-code': 'astronautA', 'cowork': 'astronautA', 'cowork-cloud': 'astronautA', 'codex': 'astronautB',
@@ -431,7 +446,7 @@
     var propCv = null, propItems = [], dirtyProps = true;
     var agents = {}, order = [], slotTaken = {}, first = true, hoverId = null, placed = [];
     var lastModelAt = 0, modelNow = 0, clockSkew = 0;
-    var rovers = ROVER_STARTS.map(function(r){ return {x: r.x, y: r.y, path: [], face: 'SE', next: r.next}; });
+    var rovers = ROVER_STARTS.map(function(r){ return {x: r.x, y: r.y, path: [], face: 'SE', next: r.next, hover: false, helloUntil: 0, box: null}; });
     var burn = {last: 0, at: 0, rate: 0};
     var spin = 0;                   // tower crane jib angle (site core), added to every step
     var drag = null;
@@ -864,7 +879,7 @@
         var a = agents[id], k = a.sub ? SUB_SCALE : TH.agentScale;
         list.push({d: dep(a.x, a.y) + 0.05, f: agentFn(a, t, now), r: box(sx(a.x, a.y), sy(a.x, a.y), 45 * k, 150 * k, 90 * k, 175 * k)});
       });
-      rovers.forEach(function(rv){ list.push({d: dep(rv.x, rv.y), f: function(){ sprite(TH.rover[0] + ROVER_DIR[rv.face], rv.x, rv.y, TH.rover[1], 1, true); }, r: box(sx(rv.x, rv.y), sy(rv.x, rv.y), 50, 70, 100, 90)}); });
+      rovers.forEach(function(rv){ list.push({d: dep(rv.x, rv.y), f: function(){ rv.box = sprite(TH.rover[0] + ROVER_DIR[rv.face], rv.x, rv.y, TH.rover[1], 1, true); }, r: box(sx(rv.x, rv.y), sy(rv.x, rv.y), 50, 70, 100, 90)}); });
       var TF = ROOMS.think.focus, PF = ROOMS.plan.focus, AF = AIRLOCK_DOOR, CF = ROOMS.core.focus;
       function fx(F){ return box(sx(F[0], F[1]), sy(F[0], F[1]), 160, 260, 320, 330); }
       list.push({d: dep(TF[0], TF[1]) + 0.2, f: function(){ (TH.id === 'site' ? lamp : orb)(t, occ.think || 0); }, r: fx(TF)});
@@ -904,6 +919,7 @@
       Object.keys(agents).map(function(id){ return agents[id]; })
         .sort(function(a, b){ return (b.head ? b.head[1] : 0) - (a.head ? a.head[1] : 0); })
         .forEach(function(a){ drawLabel(a, t, now); });
+      drawRoverTalk(now);
     }
 
     // ---- plan view (O, burn zone): pixel-art 3/4 top-down -----------------------
@@ -1331,6 +1347,7 @@
           box(c, X - 4, Y - 5, 8, 3, 3, '#f2b705', '#b98a00'); P(c, X - 1, Y - 7, 3, 2, '#33414f'); P(c, rt ? X + 4 : X - 7, Y - 3, 3, 3, '#7a5a00');
           P(c, X - 4, Y - 1, 2, 2, '#1a1f2e'); P(c, X + 2, Y - 1, 2, 2, '#1a1f2e'); P(c, X, Y - 8, 1, 1, Math.floor(t * 4) % 2 ? '#ffd84d' : '#1a1f2e');
         } else { box(c, X - 3, Y - 4, 6, 3, 2, '#e09a3a', '#b0721f'); P(c, X - 1, Y - 4, 2, 1, Math.floor(t * 4) % 2 ? '#5dff9d' : '#1a1f2e'); }
+        rv.box = [cam.ox + (X - 6) * cam.s, cam.oy + (Y - 10) * cam.s, 12 * cam.s, 12 * cam.s];
       });
       // agents, sorted by y so nearer ones overlap
       var list = Object.keys(agents).map(function(id){ return agents[id]; }).sort(function(a, b){ return a.y - b.y; });
@@ -1389,6 +1406,33 @@
       ctx.textBaseline = 'alphabetic';
       var lb = hoverId && agents[hoverId];
       if(lb && lb.box){ ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.strokeRect(lb.box[0] - 2, lb.box[1] - 2, lb.box[2] + 4, lb.box[3] + 4); }
+      drawRoverTalk(now);
+    }
+
+    // No.far's speech bubble, at screen resolution above the rover, on top
+    // of everything. The greeting breaks after its comma onto two lines.
+    function drawRoverTalk(now){
+      rovers.forEach(function(rv, ri){
+        var b = rv.box, txt = b && roverSays(rv, now, ri);
+        if(!txt) return;
+        var ci = txt.indexOf(', '), lines = ci > 0 ? [txt.slice(0, ci + 1), txt.slice(ci + 2)] : [txt];
+        var ax = b[0] + b[2] / 2, ay = b[1] - 2;
+        if(ax < -20 || ax > W + 20 || ay < 10 || ay > H + 20) return;
+        var fs = lines.length > 1 ? 12 : 13, lh = fs + 4, tail = 7;
+        ctx.save();
+        ctx.font = '600 ' + fs + 'px "Segoe UI", system-ui, sans-serif';
+        var tw = 0; lines.forEach(function(l){ tw = Math.max(tw, ctx.measureText(l).width); });
+        var bw = Math.max(tw + 18, 28), bh = lines.length * lh + 8;
+        var X = clamp(ax - bw / 2, 4, W - bw - 4), Y = Math.max(4, ay - tail - bh), tx = clamp(ax, X + 10, X + bw - 10);
+        var site = TH.id === 'site';
+        ctx.fillStyle = site ? '#fffdf7' : 'rgba(240,249,255,0.96)'; ctx.strokeStyle = site ? '#3a2a18' : '#7dd3fc'; ctx.lineWidth = 1.5;
+        roundRect(ctx, X, Y, bw, bh, 8); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(tx - 6, Y + bh - 1); ctx.lineTo(ax, Y + bh + tail); ctx.lineTo(tx + 6, Y + bh - 1); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(tx - 6, Y + bh); ctx.lineTo(ax, Y + bh + tail); ctx.lineTo(tx + 6, Y + bh); ctx.stroke();
+        ctx.fillStyle = '#0f172a'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        lines.forEach(function(l, i){ ctx.fillText(l, X + bw / 2, Y + 5 + i * lh); });
+        ctx.restore();
+      });
     }
 
     function wallFn(name, x, y){ return function(){ return sprite(name, x, y, 1, 1, true); }; }
@@ -1782,6 +1826,8 @@
       return best;
     }
 
+    function roverHit(mx, my){ for(var i = 0; i < rovers.length; i++) if(inBox(rovers[i].box, mx, my, 6)) return i; return -1; }
+
     // ---- input ----------------------------------------------------------------
     function onMove(e){
       var r = canvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
@@ -1789,10 +1835,12 @@
         cam.ox = drag.ox + (e.clientX - drag.x); cam.oy = drag.oy + (e.clientY - drag.y);
         cam.user = true; dirtyFloor = true; drag.moved = true; showTip(null); kick(); return;
       }
-      var a = hit(mx, my);
+      var a = hit(mx, my), ri = a ? -1 : roverHit(mx, my), flip = false;
       hoverId = a ? a.id : null;
-      canvas.style.cursor = a ? 'pointer' : 'grab';
+      rovers.forEach(function(rv, i){ if(rv.hover !== (i === ri)){ rv.hover = i === ri; flip = true; } });
+      canvas.style.cursor = a || ri >= 0 ? 'pointer' : 'grab';
       showTip(a, mx, my);
+      if(flip) kick();
     }
     function onDown(e){ drag = {x: e.clientX, y: e.clientY, ox: cam.ox, oy: cam.oy, moved: false}; canvas.style.cursor = 'grabbing'; }
     function onUp(e){
@@ -1800,6 +1848,9 @@
       if(wasDrag) return;
       var r = canvas.getBoundingClientRect(), a = hit(e.clientX - r.left, e.clientY - r.top);
       if(a && opts.onAgentClick) opts.onAgentClick(a.id, a.data, {x: e.clientX, y: e.clientY});
+      if(a) return;
+      var ri = roverHit(e.clientX - r.left, e.clientY - r.top), now = performance.now();
+      if(ri >= 0){ rovers[ri].helloUntil = now + ROVER_TALK.helloMs; kick(); }
     }
     function onWheel(e){
       e.preventDefault();
@@ -1810,7 +1861,7 @@
       cam.user = true; dirtyFloor = true; kick();
     }
     function onDbl(){ fit(); kick(); }
-    function onLeave(){ hoverId = null; showTip(null); drag = null; }
+    function onLeave(){ hoverId = null; showTip(null); drag = null; rovers.forEach(function(rv){ rv.hover = false; }); }
 
     // ---- loop -------------------------------------------------------------------
     // Frames run on a timer at the rate the scene needs, one animation frame
@@ -1945,5 +1996,6 @@
   (document.head || document.documentElement).appendChild(styleEl);
 
   window.BMStation = {create: create, fromSnapshot: fromSnapshot, STAGES: STAGES, ROOMS: ROOMS, THEMES: THEMES, THEME_DEF: THEME_DEF, GRID: [GX, GY], HOLO: HOLO, SITE_UNMAPPED: SITE_UNMAPPED,
-    ROOM_W: RW, SLOTS: SLOTS, SEATS: SEATS, ROVER_STARTS: ROVER_STARTS, labelSpot: labelSpot, labelLayout: labelLayout, PLANT_TILES: plantTiles, chairFace: chairFace, seatFace: seatFace, seatedSprite: seatedSprite};
+    ROOM_W: RW, SLOTS: SLOTS, SEATS: SEATS, ROVER_STARTS: ROVER_STARTS, labelSpot: labelSpot, labelLayout: labelLayout, PLANT_TILES: plantTiles, chairFace: chairFace, seatFace: seatFace, seatedSprite: seatedSprite,
+    ROVER_TALK: ROVER_TALK, roverSays: roverSays, inBox: inBox};
 })();
