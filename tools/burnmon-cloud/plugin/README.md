@@ -10,6 +10,10 @@ answers, no tool input, no paths. The Claude desktop app then copies that file t
 `~/.burnmon/cloud` on your computer, and BurnMon shows it as its own row, Cowork (Cloud).
 The copy is a plugin hook, so it costs no model tokens.
 
+Status: still under investigation. It only counts a cloud session that has `~/.burnmon`
+connected, and Claude does not connect that folder by itself. If you know a better way, please
+open an issue at https://github.com/wilcodetree/burnmon/issues.
+
 ## Set up
 
 1. Install BurnMon and start it once. It creates `~/.burnmon/cloud` in your home folder

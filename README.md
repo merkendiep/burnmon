@@ -59,7 +59,16 @@ default. A cloud session writes no transcript to your disk, so BurnMon cannot se
 your Cowork number comes out too low without any warning. On one Team account on 2026-10-12,
 two new sessions in a row ran in the cloud even with "Only on this computer" switched on.
 
-The fix is an optional Claude plugin, `burnmon-cloud`, in `tools\burnmon-cloud`. Inside each
+**Status: still under investigation.** The plugin below works, but only for a cloud session
+that has the folder `~\.burnmon` connected. Claude does not connect that folder by itself, so
+today every cloud session needs that step by hand (or once per Cowork project), and a session
+without it is simply not counted, with no warning. That is not workable for most people. As of
+2026-10-13 we found no local, offline token monitor that counts cloud sessions without such a
+step: the tools that do count them send the numbers through an online service, or need an
+organization admin to set up Cowork's OpenTelemetry export. If you know a better way, please
+share it: open an issue at https://github.com/wilcodetree/burnmon/issues.
+
+A partial fix is an optional Claude plugin, `burnmon-cloud`, in `tools\burnmon-cloud`. Inside each
 cloud session it reads that session's own transcript at the end of each turn, when a
 subagent finishes, and at most every 20 seconds while Claude works with tools. It keeps only
 the usage numbers: time, session and request ids, model and token counts. No prompts, no

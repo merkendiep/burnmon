@@ -205,6 +205,15 @@ between versions" (code.claude.com/docs/en/sessions).
   session, run test 8's two turns. Pass: rows land in `~\.burnmon\cloud\latest.jsonl` with test 8's
   timings and BurnMon shows them.
 
+Test 9, 2026-10-13, plugin 3.3.0 from the marketplace. `~` works from a hook (this build session's
+copies land in `~\.burnmon\cloud`, BurnMon Dev shows them live). Test session `35082878`: no
+delivery while only the `burnmon` folder was connected; after `~\.burnmon` was added, all 9 earlier
+rows landed at once (10:50:27) and the next turn 11 s after its request. Verdict (Wilco, 2026-10-13):
+a manual folder step per session or project is not workable for users or customers. A probe that
+lets the plugin ask for the folder itself (one approval per session) was built and dropped before
+testing for the same reason. Status: under investigation; README asks for outside solutions.
+Research on other monitors and the org setting: `..\04_assets\2026-10-13_cowork_in_the_cloud_org_setting.md`.
+
 ## Done when
 
 - Vendor strip shows Cowork and Cowork (Cloud) as separate rows, today, week and month.
