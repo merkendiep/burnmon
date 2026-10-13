@@ -181,9 +181,29 @@ between versions" (code.claude.com/docs/en/sessions).
   and rewrites `latest.jsonl` in place with the same bytes if they are unchanged; that write's
   FileChanged copy finds the new content uploaded. The hook still returns in about 50 ms (measured).
   29 extract tests pass; `claude plugin validate --strict` passes.
-- Test 8 (plugin 1.1.3, live): not run yet. Same steps as test 6, watcher open for 60 s after each
-  turn. Pass: each turn's last request lands within about 20 s of the turn ending, and subagent rows
-  within about 20 s of the subagent finishing.
+- Test 8, plugin 1.1.3 (`e79d7b5`, plugin page showed 1.1.3 and 7 hooks), 2026-10-12, cloud session
+  `1118f9ff`. PASS. Plain turn: request 23:56:17 local, on the laptop 23:56:25 (8 s). Subagent: its
+  `date` said 23:57:09; the first copies (23:57:10 to 23:57:13) still carried the old file, the settle
+  copy at 23:57:22 brought all 3 subagent rows (13 s), while the main turn still slept. Turn end:
+  last request 23:57:44, on the laptop 23:57:56 (12 s), without a next message. Also seen: two other
+  cloud sessions of the same account copied to the same file during the test (23:58:28 and 23:59:02).
+
+## Universal plugin (2026-10-13)
+
+- Measured 2026-10-13: `device_commit_files` expands `~` in `devicePath` (both `~\.burnmon\cloud\x`
+  and `~/.burnmon/cloud/x` landed in `C:\Users\<user>\.burnmon\cloud`, folder connected). Not yet
+  seen from a hook (test 9).
+- Decided by Wilco 2026-10-13 ("go"): one plugin for everyone. `build.ps1` defaults to the target
+  `~/.burnmon/cloud/latest.jsonl`; BurnMon reads `~/.burnmon/cloud` as a second drop folder next to
+  the exe-adjacent one (`scan.CloudDropDirs`, both created at startup). This answers the open
+  `cloud_drop_roots` question without a config key. The plugin is published in the ZND Skills Public
+  marketplace (`znd-skills-public\plugins\burnmon-cloud`, written by `build.ps1 -OutDir`) on the
+  shared ZND version clock (Wilco 2026-10-12); the source stays in `tools\burnmon-cloud`.
+- Known: `scan.FindJSONL` keeps one file per file name, so a full scan reads the newer of two
+  `latest.jsonl` files; the live watcher reads both. Rows already stored stay.
+- Test 9: install the marketplace copy, remove the uploaded one, connect `~\.burnmon` to a new cloud
+  session, run test 8's two turns. Pass: rows land in `~\.burnmon\cloud\latest.jsonl` with test 8's
+  timings and BurnMon shows them.
 
 ## Done when
 
@@ -219,8 +239,8 @@ between versions" (code.claude.com/docs/en/sessions).
 - Plugin 1.0.0: the end of a turn arrives with the next message, or when the runner stops the
   idle session (about 4 minutes, test 5). Plugins 1.1.0 and 1.1.1: FileChanged fires once per
   session start (test 6). Plugin 1.1.2: fires on every write, but each copy carries the previous
-  upload (test 7). Plugin 1.1.3 adds a settle rewrite 10 s after each write; live result pending
-  (test 8).
+  upload (test 7). Plugin 1.1.3 adds a settle rewrite 10 s after each write: turn ends and
+  subagent work land in about 10 to 15 s (test 8).
 - The extract has no tool calls, so the Station cannot tell a cloud session that works from one
   that waits. BurnMon Dev shows it as Thinking until 3 minutes after its newest request, then
   Waiting on you (the Copilot in VS Code rule).

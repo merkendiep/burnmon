@@ -89,10 +89,11 @@ func DefaultSourcesWithOptions(scanWSL bool) []string {
 		}
 	}
 
-	// Cowork (Cloud): the exe-adjacent drop folder the BurnMon cloud
-	// plugin copies usage extracts into. The claude adapter recognises its
-	// files by path (IsCloudDropPath) and parses them as their own format.
-	if d := cloudDropDir(); d != "" {
+	// Cowork (Cloud): the drop folders the BurnMon cloud plugin copies usage
+	// extracts into, next to the exe and ~/.burnmon/cloud. The claude
+	// adapter recognises their files by path (IsCloudDropPath) and parses
+	// them as their own format.
+	for _, d := range CloudDropDirs() {
 		add(d)
 	}
 

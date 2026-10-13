@@ -1,29 +1,48 @@
-# Builds the BurnMon cloud plugin for one computer.
+# Builds the BurnMon cloud plugin.
 #
-# Runs in: PowerShell on the computer that runs BurnMon.
-# -Target is where cloud sessions copy their usage extract to: the
-# .burnmon\cloud\latest.jsonl file next to burnmon.exe. Give more than one
-# target when sessions connect different folders; a cloud session can only
-# write into a folder that is connected to it.
+# Runs in: PowerShell (Windows PowerShell 5.1 or PowerShell 7).
+# -Target is where cloud sessions copy their usage extract to. The default,
+# ~/.burnmon/cloud/latest.jsonl, is the same on every computer: the copy tool
+# expands "~" to the user's home folder (measured 2026-10-13), and BurnMon
+# reads that folder. That build is the universal one, published in the ZND
+# Skills Public marketplace. Give your own path(s) only for a build for one
+# computer; a cloud session can only write into a folder connected to it.
+# -Version stamps the manifest version of the outputs (the shared ZND version
+# clock); the default is plugin\.claude-plugin\plugin.json.
+# -OutDir also writes the unpacked plugin to a folder, for the marketplace
+# repo (znd-skills-public\plugins\burnmon-cloud). An existing plugin.json
+# there keeps its version unless -Version is given, because publish-skills.ps1
+# owns that number.
 #
-# Example:
+# Examples:
 #   cd C:\ZND\50_projects\burnmon\tools\burnmon-cloud
-#   .\build.ps1 -Target 'C:\ZND\50_projects\burnmon\.burnmon\cloud\latest.jsonl'
+#   .\build.ps1
+#   .\build.ps1 -OutDir C:\ZND\50_projects\znd-skills-public\plugins\burnmon-cloud
+#   .\build.ps1 -Target 'C:\path\to\burnmon\.burnmon\cloud\latest.jsonl'
 #
 # Output: dist\burnmon-cloud-<version>.plugin (install it under Customize >
-# Plugins) and the same archive as .zip (for an organization upload).
+# Plugins > Add) and the same archive as .zip.
 param(
-    [Parameter(Mandatory = $true)][string[]]$Target
+    [string[]]$Target = @('~/.burnmon/cloud/latest.jsonl'),
+    [string]$Version = '',
+    [string]$OutDir = ''
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $src = Join-Path $here 'plugin'
 $manifest = Get-Content (Join-Path $src '.claude-plugin\plugin.json') -Raw | ConvertFrom-Json
+if ($OutDir -and -not $Version) {
+    $existing = Join-Path $OutDir '.claude-plugin\plugin.json'
+    if (Test-Path -LiteralPath $existing) {
+        $Version = (Get-Content -LiteralPath $existing -Raw | ConvertFrom-Json).version
+    }
+}
+if ($Version) { $manifest.version = $Version }
 $version = $manifest.version
 
 foreach ($t in $Target) {
-    if (-not $t.EndsWith('\.burnmon\cloud\latest.jsonl')) {
-        throw "Target '$t' must end in \.burnmon\cloud\latest.jsonl"
+    if (-not ($t -replace '\\', '/').EndsWith('/.burnmon/cloud/latest.jsonl')) {
+        throw "Target '$t' must end in .burnmon\cloud\latest.jsonl"
     }
 }
 
@@ -74,15 +93,25 @@ Copy-Item $src $stage -Recurse
 # Running the tests leaves Python bytecode next to extract.py; it does not ship.
 Get-ChildItem $stage -Recurse -Force -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force
 New-Item -ItemType Directory -Path (Join-Path $stage 'hooks') -Force | Out-Null
+$utf8 = New-Object Text.UTF8Encoding $false
 $json = $hooks | ConvertTo-Json -Depth 12
-[IO.File]::WriteAllText((Join-Path $stage 'hooks\hooks.json'), $json, (New-Object Text.UTF8Encoding $false))
+[IO.File]::WriteAllText((Join-Path $stage 'hooks\hooks.json'), $json, $utf8)
+[IO.File]::WriteAllText((Join-Path $stage '.claude-plugin\plugin.json'), (($manifest | ConvertTo-Json -Depth 12) + "`n"), $utf8)
+
+if ($OutDir) {
+    # Replace the unpacked plugin wholesale, so a file removed here is removed there too.
+    if (Test-Path -LiteralPath $OutDir) { Remove-Item -LiteralPath $OutDir -Recurse -Force }
+    New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
+    Copy-Item -Path (Get-ChildItem $stage -Force).FullName -Destination $OutDir -Recurse -Force
+    Write-Host "Wrote the unpacked plugin $version to $OutDir"
+}
 
 $dist = Join-Path $here 'dist'
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
 $zip = Join-Path $dist "burnmon-cloud-$version.zip"
 Remove-Item $zip -ErrorAction SilentlyContinue
 # -Force lists .claude-plugin too: a '*' wildcard skips dot folders outside Windows.
-Compress-Archive -Path (Get-ChildItem $stage -Force).FullName -DestinationPath $zip
+Compress-Archive -Path (Get-ChildItem $stage -Force).FullName -DestinationPath $zip -Force
 Copy-Item $zip (Join-Path $dist "burnmon-cloud-$version.plugin") -Force
 Remove-Item $stage -Recurse -Force
 Write-Host "Built $zip and burnmon-cloud-$version.plugin for: $($Target -join ', ')"
