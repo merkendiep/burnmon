@@ -319,19 +319,31 @@ func main() {
 
 	// The bound functions' bodies live in bindings.go, shared with the
 	// browser bridge (browser.go) used on macOS and Linux.
+	// bucketSeconds (U5, v0.3): monitor view's braille chart calls
+	// bmLive(10) for finer columns than the Now page's own bmLive(), no
+	// second binding; live.BuildSnapshot defaults to 60 when omitted.
 	if err := w.Bind("bmLive", func(bucketSeconds ...int) (live.Snapshot, error) {
 		return a.liveSnapshot(st, bucketSeconds...)
 	}); err != nil {
 		log.Println("could not bind bmLive:", err)
 	}
 
-	// bmTurn, bmSessionInsight and bmHistory return immediately and resolve
-	// through asyncResolveJS from a goroutine (v0.2.1 hang patch, N1 v0.2.2):
-	// go-webview2 runs a bound Go function synchronously on the UI thread the
-	// window paints and processes input on, and these can each re-read a
-	// session's whole history (or, for bmHistory, the whole store), so a
-	// synchronous call froze the window. renderSessions() also fires one
-	// bmSessionInsight per kept session on every page load.
+	// bmTurn (I3): the Now page's "explain this spike" drawer, called on
+	// demand when a marker or ticker line is clicked, not polled. Re-reads
+	// sessionID's whole event history (EventsForSession, any vendor) rather
+	// than bmLive's windowed one, so a drawer opened on a turn that has
+	// since scrolled out of the 30-minute chart still resolves.
+	//
+	// N1 (v0.2.2, SESSION_LOG.md): this used to return live.BuildTurnDetail's
+	// result directly, synchronously, on go-webview2's Bind callback, which
+	// v0.2.1's own hang patch documented as running on the same UI thread
+	// the window paints and processes input on. On the real store a turn
+	// drawer open re-reads a session's whole event history, so while that
+	// call is in flight the window (including the drawer's own Close button
+	// and Esc) cannot respond, which reads as "the drawer cannot be closed"
+	// rather than "the window is briefly frozen". Same fix as
+	// bmSessionInsight/bmHistory below: return immediately, do the real work
+	// in a goroutine, resolve through asyncResolveJS.
 	if err := w.Bind("bmTurn", func(sessionID string, turn int) {
 		go func() {
 			detail := a.turnDetail(st, sessionID, turn)
@@ -347,6 +359,22 @@ func main() {
 		log.Println("could not bind bmTurn:", err)
 	}
 
+	// bmSessionInsight (I3, Sessions tab): the findings column and its
+	// expandable row call this on demand, one sessionID at a time, never
+	// polled; the frontend caches the result in page memory so re-expanding
+	// a row costs nothing further. renderSessions() (template.html) fires
+	// one of these per kept session on every page load, unconditionally
+	// (hundreds at once against a real history, see SESSION_LOG.md v0.2.1
+	// hang patch): go-webview2's Bind runs the bound Go function
+	// synchronously on the same Win32 message-pump thread the window
+	// paints and processes input on, so hundreds of them in a row, even at
+	// a few tens of milliseconds each, add up to the UI thread being fully
+	// consumed for the whole burst. This binding therefore returns
+	// immediately (case (b): "or move it to a goroutine that resolves
+	// through w.Dispatch") and does the real work in a goroutine, pushing
+	// the result back into the page by calling a small JS-side resolver
+	// once it is ready; asyncResolveJS below is the shared plumbing both
+	// this and bmHistory use for that.
 	if err := w.Bind("bmSessionInsight", func(sessionID string) {
 		go func() {
 			js, err := asyncResolveJS("__bmSessionInsightResolve", sessionID, a.sessionInsight(st, sessionID))
@@ -360,6 +388,15 @@ func main() {
 		log.Println("could not bind bmSessionInsight:", err)
 	}
 
+	// bmHistory (P2): queried on demand from the History tab's filter
+	// controls, not polled, so it re-reads the whole store on every call
+	// rather than the windowed query bmLive uses for its 2-second poll.
+	// Same UI-thread concern as bmSessionInsight above (a large store's
+	// AllEvents plus history.Build's own aggregation can run past 50ms), so
+	// it returns immediately and resolves asynchronously too; unlike
+	// bmSessionInsight this fires once per filter change, not once per
+	// session, so the win here is "never freezes on a big store" rather
+	// than "no longer fires hundreds at once".
 	if err := w.Bind("bmHistory", func(reqID string, f history.Filter) {
 		go func() {
 			payload, err := a.historyPayload(st, f)
@@ -377,12 +414,22 @@ func main() {
 		log.Println("could not bind bmHistory:", err)
 	}
 
+	// bmVendorStrip (P3): the Now page's vendor strip calls this from its
+	// own 1-minute timer, not bmLive's 2-second poll, so it runs one SQL
+	// aggregate against the whole events table rather than bmLive's
+	// windowed read.
 	if err := w.Bind("bmVendorStrip", func() (vendorstrip.Payload, error) {
 		return a.vendorStrip(st)
 	}); err != nil {
 		log.Println("could not bind bmVendorStrip:", err)
 	}
 
+	// bmForecast (F1): the Now page's forecast chart calls this from its own
+	// 1-minute timer, same reason as bmVendorStrip above; it also carries
+	// the scoring bookkeeping (EnsureScored), so a week's plan and actual
+	// get recorded even if the Now page forecast section is never scrolled
+	// to, as long as the app is open at least once a minute somewhere in
+	// that week.
 	if err := w.Bind("bmForecast", func() (forecast.Payload, error) {
 		return a.forecastPayload(st)
 	}); err != nil {

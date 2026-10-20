@@ -44,7 +44,7 @@ func (a *app) liveSnapshot(st *store.Store, bucketSeconds ...int) (live.Snapshot
 	events, err := st.EventsSince(now.Add(-live.ChartWindow))
 	storeWait := time.Since(storeStart)
 	if err != nil {
-		log.Printf("bmLive: %v total, %v waiting for the store (EventsSince error: %v)", time.Since(callStart), storeWait, err)
+		log.Printf("bound bmLive: %v total, %v waiting for the store (EventsSince error: %v)", time.Since(callStart), storeWait, err)
 		return live.Snapshot{}, err
 	}
 	snap := live.BuildSnapshot(events, &cfg, now, bucketSeconds...)
@@ -59,7 +59,7 @@ func (a *app) liveSnapshot(st *store.Store, bucketSeconds ...int) (live.Snapshot
 		log.Printf("debug: bmLive poll %d, HeapAlloc=%d bytes", n, mem.HeapAlloc)
 	}
 	if elapsed := time.Since(callStart); elapsed > 50*time.Millisecond {
-		log.Printf("bmLive: %v total, %v waiting for the store", elapsed, storeWait)
+		log.Printf("bound bmLive: %v total, %v waiting for the store", elapsed, storeWait)
 	}
 	return snap, nil
 }
@@ -77,7 +77,7 @@ func (a *app) turnDetail(st *store.Store, sessionID string, turn int) live.TurnD
 		log.Println("bmTurn:", sessionID, turn, ":", err)
 	}
 	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
-		log.Printf("bmTurn: %v waiting for the store", elapsed)
+		log.Printf("bound bmTurn: %v waiting for the store", elapsed)
 	}
 	return detail
 }
@@ -93,7 +93,7 @@ func (a *app) sessionInsight(st *store.Store, sessionID string) []insight.Findin
 		findings = nil
 	}
 	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
-		log.Printf("bmSessionInsight: %v waiting for the store", elapsed)
+		log.Printf("bound bmSessionInsight: %v waiting for the store", elapsed)
 	}
 	return findings
 }
@@ -110,7 +110,7 @@ func (a *app) historyPayload(st *store.Store, f history.Filter) (history.Payload
 	}
 	payload := history.Build(events, &cfg, f)
 	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
-		log.Printf("bmHistory: %v waiting for the store, %d rows", elapsed, len(events))
+		log.Printf("bound bmHistory: %v waiting for the store, %d rows", elapsed, len(events))
 	}
 	return payload, nil
 }
@@ -122,7 +122,7 @@ func (a *app) vendorStrip(st *store.Store) (vendorstrip.Payload, error) {
 	start := time.Now()
 	payload, err := vendorstrip.Build(st, &cfg, time.Now())
 	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
-		log.Printf("bmVendorStrip: %v total", elapsed)
+		log.Printf("bound bmVendorStrip: %v total, %v waiting for the store", elapsed, elapsed)
 	}
 	return payload, err
 }
@@ -134,7 +134,7 @@ func (a *app) forecastPayload(st *store.Store) (forecast.Payload, error) {
 	start := time.Now()
 	payload, err := forecast.Build(st, &cfg, time.Now())
 	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
-		log.Printf("bmForecast: %v total", elapsed)
+		log.Printf("bound bmForecast: %v total, %v waiting for the store", elapsed, elapsed)
 	}
 	return payload, err
 }
